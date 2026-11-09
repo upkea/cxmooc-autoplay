@@ -27,8 +27,11 @@ cxmooc-autoplay/
 │   └── check.bat                 # 只检测不点击（校准用）
 └── docs/
     ├── AI-GUIDE.md               # 怎么拿 key / 怎么搭反代（不含任何 key）
+    ├── DIFF.md                   # 与原版的逐文件差异（+572 行，未删任何原功能）
     └── TROUBLESHOOTING.md        # 排错 + 提交前检查
 ```
+
+> 想知道「跟原作者那版到底差在哪」：看 **[docs/DIFF.md](docs/DIFF.md)**（12 个文件、+572/-0 行的完整清单和原因）。
 
 ## 快速开始
 
