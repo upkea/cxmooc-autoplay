@@ -1,0 +1,221 @@
+import {Application} from "../application";
+import {HttpUtils} from "../utils/utils";
+import {Option, TopicType} from "./question";
+
+// AI 答题：调用任意 OpenAI 兼容接口（DeepSeek / 硅基流动 / 智谱 / Ollama 都行）
+// 配置项存在 localStorage（脚本头部的 config 块）：
+//   ai_enable / ai_base / ai_key / ai_model
+
+export interface AIResult {
+    ok: boolean;
+    correct: Option[];
+    raw?: string;
+    error?: string;
+}
+
+function cfg(key: string, def: string): string {
+    try {
+        const val = Application.App.config.GetConfig(key, def);
+        if (val === undefined || val === null || String(val).trim() === "") {
+            return def;
+        }
+        return String(val).trim();
+    } catch (e) {
+        return def;
+    }
+}
+
+export function AIConfig(): { base: string, key: string, model: string } {
+    return {
+        base: cfg("ai_base", "https://api.siliconflow.cn/v1").replace(/\/+$/, ""),
+        key: cfg("ai_key", ""),
+        model: cfg("ai_model", "Qwen/Qwen2.5-7B-Instruct"),
+    };
+}
+
+export function AIEnabled(): boolean {
+    try {
+        const c = AIConfig();
+        return cfg("ai_enable", "true") != "false" && !!c.key;
+    } catch (e) {
+        return false;
+    }
+}
+
+function typeText(type: TopicType): string {
+    switch (type) {
+        case 1:
+            return "单选题";
+        case 2:
+            return "多选题";
+        case 3:
+            return "判断题";
+        case 4:
+            return "填空题";
+        default:
+            return "题目";
+    }
+}
+
+export function BuildAIPrompt(topic: string, type: TopicType, options: Option[]): string {
+    let prompt = "请回答下面的网课题目。\n";
+    prompt += "题型：" + typeText(type) + "\n";
+    prompt += "题目：" + topic + "\n";
+    if (options && options.length > 0) {
+        prompt += "选项：\n";
+        for (let i = 0; i < options.length; i++) {
+            prompt += String(options[i].option) + ". " + String(options[i].content || "") + "\n";
+        }
+    }
+    switch (type) {
+        case 1:
+            prompt += "\n要求：只输出一个正确选项的字母（例如 A），不要输出任何解释。";
+            break;
+        case 2:
+            prompt += "\n要求：只输出所有正确选项的字母，按字母顺序连在一起（例如 ABD），不要输出任何解释。";
+            break;
+        case 3:
+            prompt += "\n要求：只输出「对」或「错」，不要输出任何解释。";
+            break;
+        case 4:
+            prompt += "\n要求：按空依次输出答案，每行一个，行首不要带序号，不要输出任何解释。";
+            break;
+        default:
+            prompt += "\n要求：只输出答案本身（选项字母或「对/错」），不要解释。";
+    }
+    return prompt;
+}
+
+function uniq(arr: string[]): string[] {
+    const res: string[] = [];
+    for (let i = 0; i < arr.length; i++) {
+        if (res.indexOf(arr[i]) < 0) {
+            res.push(arr[i]);
+        }
+    }
+    return res;
+}
+
+// 把 AI 的回复解析成 correct 选项
+export function ParseAIAnswer(raw: string, type: TopicType, options: Option[]): Option[] {
+    const text = (raw || "").trim();
+    if (!text) {
+        return null;
+    }
+    const validLetters = uniq((options || []).map(o => String(o.option || "").toUpperCase())
+        .filter(s => /^[A-H]$/.test(s)));
+
+    if (type == 3) {
+        const neg = /(错|错误|不对|不正确|×|✗|✘|FALSE)/i.test(text);
+        const pos = /(对|正确|√|✓|✔|TRUE)/i.test(text);
+        if (neg && !pos) {
+            return [{option: false, content: false}];
+        }
+        if (pos && !neg) {
+            return [{option: true, content: true}];
+        }
+        return text.indexOf("对") >= 0 ? [{option: true, content: true}] : [{option: false, content: false}];
+    }
+
+    if (type == 4) {
+        const lines = text.split(/\r?\n/)
+            .map(s => s.replace(/^\s*(?:第)?\s*\d+\s*(?:空|题)?\s*[.、:：)）]\s*/, "").trim())
+            .filter(s => s.length > 0 && !/^\d+$/.test(s));
+        const n = (options && options.length) ? options.length : lines.length;
+        const res: Option[] = [];
+        for (let i = 0; i < n; i++) {
+            const content = lines[i] !== undefined ? lines[i] : (lines[0] || "");
+            res.push({option: String(i + 1), content: content});
+        }
+        if (res.length == 1) {
+            res[0].option = "1";
+        }
+        return res;
+    }
+
+    // 单选/多选：先试内容匹配，再试字母
+    const byContent: Option[] = [];
+    for (let i = 0; i < (options || []).length; i++) {
+        const content = String(options[i].content || "").trim();
+        if (content.length >= 2 && text.indexOf(content) >= 0) {
+            byContent.push({option: options[i].option, content: ""});
+        }
+    }
+    if (byContent.length > 0 && (type == 2 || byContent.length == 1)) {
+        return byContent;
+    }
+
+    // 字母：优先整行只有字母的情况
+    const lines = text.split(/\r?\n/).map(s => s.trim()).filter(s => s.length > 0);
+    let letters: string[] = [];
+    for (let i = 0; i < lines.length; i++) {
+        if (/^[A-Ha-h\s.、,，]+$/.test(lines[i])) {
+            letters = lines[i].toUpperCase().match(/[A-H]/g) || [];
+        }
+    }
+    if (letters.length == 0) {
+        letters = text.toUpperCase().match(/\b[A-H]\b/g) || [];
+    }
+    letters = uniq(letters).filter(l => validLetters.length == 0 || validLetters.indexOf(l) >= 0);
+    if (letters.length == 0) {
+        return null;
+    }
+    if (type == 1) {
+        letters = [letters[0]];
+    }
+    return letters.map(l => ({option: l, content: ""}));
+}
+
+export function AskAI(topic: string, type: TopicType, options: Option[]): Promise<AIResult> {
+    return new Promise<AIResult>(resolve => {
+        const conf = AIConfig();
+        if (!conf.key) {
+            return resolve({ok: false, correct: null, error: "未配置 ai_key"});
+        }
+        const body = JSON.stringify({
+            model: conf.model,
+            temperature: 0.1,
+            max_tokens: 400,
+            messages: [
+                {role: "system", content: "你是一名严谨的答题助手，只按要求输出答案本身，绝不输出解释或多余文字。"},
+                {role: "user", content: BuildAIPrompt(topic, type, options)},
+            ],
+        });
+        HttpUtils.HttpPost(conf.base + "/chat/completions", body, {
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": "Bearer " + conf.key,
+            },
+            json: true,
+            success: (res: any) => {
+                try {
+                    let content = "";
+                    if (res && res.choices && res.choices.length > 0) {
+                        if (res.choices[0].message) {
+                            content = res.choices[0].message.content || "";
+                        } else if (res.choices[0].text) {
+                            content = res.choices[0].text;
+                        }
+                    }
+                    if (!content && typeof res == "string") {
+                        content = res;
+                    }
+                    if (!content) {
+                        return resolve({ok: false, correct: null, error: "AI 返回为空", raw: JSON.stringify(res)});
+                    }
+                    const correct = ParseAIAnswer(content, type, options);
+                    Application.App.log.Debug("AI 原始回复", content);
+                    if (!correct) {
+                        return resolve({ok: false, correct: null, raw: content, error: "无法解析 AI 回复"});
+                    }
+                    return resolve({ok: true, correct: correct, raw: content});
+                } catch (e) {
+                    return resolve({ok: false, correct: null, error: String(e)});
+                }
+            },
+            error: () => {
+                return resolve({ok: false, correct: null, error: "网络请求失败（检查 ai_base / 网络 / 代理）"});
+            },
+        });
+    });
+}
