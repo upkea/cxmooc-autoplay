@@ -11,6 +11,49 @@ import {
 } from "@App/internal/app/question";
 import { CreateNoteLine } from "./utils";
 
+// 只收集"看得见"的文字节点：跳过 display:none / visibility:hidden / 透明 / 字号为 0 的元素。
+// 超星部分页面会在题目里混入隐藏的混淆文字，直接 innerText 会拿到乱码。
+function visibleText(root: Node): string {
+    let out = "";
+    let walk = (node: Node, depth: number) => {
+        if (!node || depth > 14) {
+            return;
+        }
+        if (node.nodeType == 3) {
+            out += (node as Text).nodeValue || "";
+            return;
+        }
+        if (node.nodeType != 1) {
+            return;
+        }
+        let e = <HTMLElement>node;
+        try {
+            if (e.tagName == "SCRIPT" || e.tagName == "STYLE" || e.tagName == "IMG" || e.tagName == "SVG") {
+                return;
+            }
+            let st = window.getComputedStyle(e);
+            if (st.display == "none" || st.visibility == "hidden") {
+                return;
+            }
+            if (parseFloat(st.opacity || "1") < 0.05) {
+                return;
+            }
+            let fs = parseFloat(st.fontSize || "14");
+            if (fs > 0 && fs < 1) {
+                return;
+            }
+        } catch (err) {
+            // ignore
+        }
+        let kids = e.childNodes;
+        for (let i = 0; i < kids.length; i++) {
+            walk(kids[i], depth + 1);
+        }
+    };
+    walk(root, 0);
+    return out;
+}
+
 //TODO: 优化
 export class CxQuestionFactory {
     public static CreateCourseQuestion(context: any, el: HTMLElement): Question {
@@ -188,29 +231,39 @@ abstract class cxQuestion implements Question {
     }
 
     public GetTopic(): string {
+        // 优先取"看得见"的文字：超星某些页面会在 DOM 里塞隐藏的混淆文本，
+        // 直接读 innerText/innerHTML 会拿到乱的（或夹着假字）
         let raw = "";
         try {
-            raw = String(this.processor.GetTopic(this.el) || "");
+            raw = visibleText(this.el);
         } catch (e) {
             raw = "";
         }
         if (!raw.trim()) {
-            // 兜底：直接取题干区域的文字
             try {
-                let title = <HTMLElement>this.el.querySelector(".Zy_TItle,.Cy_TItle");
-                raw = (title ? title.innerText : this.el.innerText) || "";
+                raw = String(this.processor.GetTopic(this.el) || "");
             } catch (e) {
                 raw = "";
             }
-        } else {
-            // processor 返回的是 innerHTML，去掉标签再给 AI
-            raw = raw.replace(/<[^>]*>/g, " ");
         }
+        if (!raw.trim()) {
+            try {
+                raw = this.el.innerText || "";
+            } catch (e) {
+                raw = "";
+            }
+        }
+        raw = raw.replace(/<[^>]*>/g, " ");
         // 去掉【单选题】这类题型标签、去掉（2.0分）、还原实体、压缩空白
         raw = raw.replace(/【[^】]{0,20}】/g, " ");
         raw = raw.replace(/[（(]\s*[\d.]+\s*分\s*[)）]/g, " ");
         raw = raw.replace(/&nbsp;/gi, " ").replace(/&lt;/gi, "<").replace(/&gt;/gi, ">").replace(/&amp;/gi, "&");
         raw = raw.replace(/[\r\n\t]+/g, " ").replace(/\s{2,}/g, " ").trim();
+        // 拿到的是整道题（含选项）时，从第一个选项标记处截断
+        let m = raw.match(/\s+[A-H][.、．]\s*/);
+        if (m && m.index !== undefined && m.index > 6) {
+            raw = raw.substring(0, m.index).trim();
+        }
         return raw.substring(0, 300);
     }
 
@@ -283,10 +336,10 @@ class cxSelectQuestion extends cxQuestion implements Question {
         let clean = (s: string): string => {
             let t = (s || "").replace(/\s+/g, " ").trim();
             // 去掉内容开头重复的选项字母标记（"A." / "A、" / "A "）
-            t = t.replace(/^[A-Ha-h]\s*[.、．:：)）]\s*/, "").trim();
+            t = t.replace(/^[A-Ha-h][\s.、．:：)）]+/, "").trim();
             return t;
         };
-        // 选项内容：取最后一个非字母的 <a>（第一个 <a> 通常是选项字母标记）
+        // 选项内容：优先用可见文字，取最后一个非字母的 <a>（第一个 <a> 通常是选项字母标记）
         let anchors = el.querySelectorAll("a");
         for (let i = anchors.length - 1; i >= 0; i--) {
             let t = (anchors[i].innerText || anchors[i].textContent || "").trim();
@@ -297,18 +350,16 @@ class cxSelectQuestion extends cxQuestion implements Question {
         }
         let tmpel = <HTMLInputElement>el.querySelector("label > input,input");
         if (tmpel == null) {
-            // 没有 input 也没有内容 a：直接用 li 全文
-            return clean(el.innerText || "");
+            return clean(visibleText(el));
         }
         let v = String(tmpel.value || "").toLowerCase();
-        // 只有真正的 true/false 才算判断题，数字/字母 value 不能乱映射成对错
         if (v == "true") {
             return "对√";
         }
         if (v == "false") {
             return "错×";
         }
-        return clean(el.innerText || "");
+        return clean(visibleText(el));
     }
 
     protected getOption(el: HTMLElement): string {
@@ -527,7 +578,7 @@ class cxSelectQuestion extends cxQuestion implements Question {
 class cxJudgeQuestion extends cxSelectQuestion implements Question {
 
     protected getContent(el: HTMLElement): string {
-        let txt = ((el.innerText || el.textContent || "") as string).trim();
+        let txt = (visibleText(el) || "").replace(/\s+/g, " ").trim();
         let tmpel = <HTMLInputElement>el.querySelector("label > input,input");
         if (tmpel) {
             let v = String(tmpel.value || "").toLowerCase();
