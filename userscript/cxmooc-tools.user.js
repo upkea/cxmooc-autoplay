@@ -1015,7 +1015,7 @@ var ToolsQuestionBankFacade = /** @class */ (function () {
     // 用 AI 逐题作答（不经过题库）
     ToolsQuestionBankFacade.prototype.answerWithAI = function (callback) {
         return __awaiter(this, void 0, void 0, function () {
-            var list, i, status, interval, i, q, type, options, title, ret, answer, tmp;
+            var list, i, status, interval, i, q, type, options, title, ret, correct, wantTrue, mapped, k, text, isTrue, isFalse, idx, answer, tmp, e_1;
             return __generator(this, function (_a) {
                 switch (_a.label) {
                     case 0:
@@ -1035,53 +1035,104 @@ var ToolsQuestionBankFacade = /** @class */ (function () {
                         i = 0;
                         _a.label = 1;
                     case 1:
-                        if (!(i < list.length)) return [3 /*break*/, 9];
+                        if (!(i < list.length)) return [3 /*break*/, 12];
                         q = list[i];
+                        _a.label = 2;
+                    case 2:
+                        _a.trys.push([2, 8, , 9]);
                         type = q.GetType();
-                        options = q.GetOptions ? q.GetOptions() : [];
-                        title = q.GetTopic();
+                        options = [];
+                        try {
+                            options = q.GetOptions ? (q.GetOptions() || []) : [];
+                        }
+                        catch (e) {
+                            application_1.Application.App.log.Warn("读取选项失败（不影响作答）：" + e);
+                            options = [];
+                        }
+                        title = "";
+                        try {
+                            title = q.GetTopic() || "";
+                        }
+                        catch (e) {
+                            title = "";
+                        }
                         application_1.Application.App.log.Info("AI 答题中（" + (i + 1) + "/" + list.length + "）：" + title.substring(0, 40));
                         return [4 /*yield*/, ai_1.AskAI(title, type, options)];
-                    case 2:
+                    case 3:
                         ret = _a.sent();
-                        if (!(!ret.ok || !ret.correct || ret.correct.length == 0)) return [3 /*break*/, 5];
+                        if (!(!ret.ok || !ret.correct || ret.correct.length == 0)) return [3 /*break*/, 6];
                         application_1.Application.App.log.Warn("AI 没给出答案：" + (ret.error || "无法解析"));
                         status = this.randAnswer(status, "no_answer", q);
-                        if (!(i < list.length - 1)) return [3 /*break*/, 4];
+                        if (!(i < list.length - 1)) return [3 /*break*/, 5];
                         return [4 /*yield*/, utils_1.Sleep(interval)];
-                    case 3:
+                    case 4:
                         _a.sent();
-                        _a.label = 4;
-                    case 4: return [3 /*break*/, 8];
-                    case 5:
+                        _a.label = 5;
+                    case 5: return [3 /*break*/, 11];
+                    case 6:
+                        correct = ret.correct;
+                        if (type == 3 && options.length > 0) {
+                            wantTrue = !!ret.correct[0].option;
+                            mapped = new Array();
+                            for (k = 0; k < options.length; k++) {
+                                text = String(options[k].content || "") + " " + String(options[k].option || "");
+                                isTrue = /对|正确|√|✓|TRUE/i.test(text);
+                                isFalse = /错|错误|×|✗|FALSE/i.test(text);
+                                if ((wantTrue && isTrue && !isFalse) || (!wantTrue && isFalse && !isTrue)) {
+                                    mapped.push({ option: String(options[k].option || ""), content: "" });
+                                    break;
+                                }
+                            }
+                            if (mapped.length == 0) {
+                                idx = wantTrue ? 0 : 1;
+                                if (options[idx]) {
+                                    mapped.push({ option: String(options[idx].option || ""), content: "" });
+                                }
+                            }
+                            if (mapped.length > 0) {
+                                correct = mapped;
+                            }
+                        }
                         answer = {
                             index: i,
                             topic: title,
                             type: type,
                             status: "ok",
                             answers: options,
-                            correct: ret.correct,
+                            correct: correct,
                             Equal: function (content1, content2) { return utils_1.removeHTML(content1) == utils_1.removeHTML(content2); },
                         };
                         return [4 /*yield*/, q.Fill(answer)];
-                    case 6:
+                    case 7:
                         tmp = _a.sent();
                         if (tmp == "ok") {
                             q.SetStatus("ok");
-                            application_1.Application.App.log.Info("AI 答案已填写：" + JSON.stringify(ret.correct.map(function (v) { return v.option; })));
+                            application_1.Application.App.log.Info("AI 答案已填写：" + JSON.stringify(correct.map(function (v) { return v.option; })));
                         }
                         else {
                             status = this.randAnswer(status, tmp, q);
                         }
-                        if (!(i < list.length - 1)) return [3 /*break*/, 8];
-                        return [4 /*yield*/, utils_1.Sleep(interval)];
-                    case 7:
-                        _a.sent();
-                        _a.label = 8;
+                        return [3 /*break*/, 9];
                     case 8:
+                        e_1 = _a.sent();
+                        application_1.Application.App.log.Warn("AI 答题异常（第 " + (i + 1) + " 题）：" + e_1);
+                        try {
+                            status = this.randAnswer(status, "no_answer", q);
+                        }
+                        catch (e2) {
+                            status = "incomplete";
+                        }
+                        return [3 /*break*/, 9];
+                    case 9:
+                        if (!(i < list.length - 1)) return [3 /*break*/, 11];
+                        return [4 /*yield*/, utils_1.Sleep(interval)];
+                    case 10:
+                        _a.sent();
+                        _a.label = 11;
+                    case 11:
                         i++;
                         return [3 /*break*/, 1];
-                    case 9: return [2 /*return*/, callback(status)];
+                    case 12: return [2 /*return*/, callback(status)];
                 }
             });
         });
@@ -3949,7 +4000,25 @@ var cxQuestion = /** @class */ (function () {
         this.AddNotice(question_1.TopicStatusString(status));
     };
     cxQuestion.prototype.GetTopic = function () {
-        return this.processor.GetTopic(this.el);
+        try {
+            var ret = this.processor.GetTopic(this.el);
+            if (ret != undefined && ret != null && String(ret).trim() != "") {
+                return String(ret).trim();
+            }
+        }
+        catch (e) {
+            // 页面结构变了，走下面的兜底
+        }
+        // 兜底：直接取题干区域的文字
+        try {
+            var title = this.el.querySelector(".Zy_TItle,.Cy_TItle");
+            var text = (title ? title.innerText : this.el.innerText) || "";
+            text = text.replace(/[\r\n\t]+/g, " ").replace(/\s{2,}/g, " ").trim();
+            return text.substring(0, 300);
+        }
+        catch (e) {
+            return "";
+        }
     };
     cxQuestion.prototype.RemoveNotice = function () {
         CxQuestionFactory.RemoveNotice(this.el);
@@ -3961,9 +4030,22 @@ var cxQuestion = /** @class */ (function () {
         return this.type;
     };
     cxQuestion.prototype.options = function () {
-        var tmpel = this.el.querySelector(".clearfix > ul,.clearfix ul.Zy_ulBottom.clearfix,ul.Zy_ulTk");
-        var list = tmpel.querySelectorAll("li");
-        return list;
+        var tmpel = this.el.querySelector(".clearfix > ul,.clearfix ul.Zy_ulBottom.clearfix,ul.Zy_ulTk,.Zy_ulTop,ul.Zy_ulTop,.Zy_ulBottom,ul.Zy_ulBottom");
+        if (tmpel) {
+            return tmpel.querySelectorAll("li");
+        }
+        // 兜底：题目元素下所有带输入框的 li
+        var all = this.el.querySelectorAll("li");
+        var ret = new Array();
+        for (var i = 0; i < all.length; i++) {
+            if (all[i].querySelector("input,a")) {
+                ret.push(all[i]);
+            }
+        }
+        if (ret.length > 0) {
+            return ret;
+        }
+        return all;
     };
     cxQuestion.prototype.isCorrect = function () {
         var el = this.el.querySelector(".Py_answer.clearfix,.Py_tk");
@@ -4004,6 +4086,10 @@ var cxSelectQuestion = /** @class */ (function (_super) {
         var ret = el.querySelector("a");
         if (ret == null) {
             var tmpel = el.querySelector("label > input,input");
+            if (tmpel == null) {
+                // 没有 input 也没有 a：直接把 li 的文字当选项内容
+                return (el.innerText || "").replace(/^\s*[A-Ha-h]\s*[.、]?\s*/, "").trim();
+            }
             if (tmpel.value == "true") {
                 return "对√";
             }
@@ -4012,7 +4098,11 @@ var cxSelectQuestion = /** @class */ (function (_super) {
         return ret.innerHTML;
     };
     cxSelectQuestion.prototype.getOption = function (el) {
-        return el.querySelector("input").value;
+        var ipt = el.querySelector("input");
+        if (ipt == null) {
+            return (el.innerText || "").trim().substring(0, 2);
+        }
+        return ipt.value;
     };
     cxSelectQuestion.prototype.GetOptions = function () {
         var res = new Array();
@@ -4023,9 +4113,19 @@ var cxSelectQuestion = /** @class */ (function (_super) {
         return res;
     };
     cxSelectQuestion.prototype.click = function (el, content) {
-        var ipt = el.querySelector("label > input");
-        if (!ipt.checked) {
-            ipt.click();
+        var ipt = el.querySelector("label > input,input");
+        if (ipt) {
+            if (!ipt.checked) {
+                ipt.click();
+            }
+        }
+        else {
+            try {
+                el.click();
+            }
+            catch (e) {
+                // ignore
+            }
         }
         this.AddNotice(this.getOption(el) + ":" + content);
     };
@@ -4038,26 +4138,34 @@ var cxSelectQuestion = /** @class */ (function (_super) {
     cxSelectQuestion.prototype.Fill = function (s) {
         var _this = this;
         return new Promise(function (resolve) {
-            var options = _this.options();
-            var flag = false;
-            for (var i = 0; i < s.correct.length; i++) {
-                for (var j = 0; j < options.length; j++) {
-                    if (s.correct[i].content.trim() == "") {
-                        if (_this.getOption(options[j]) == s.correct[i].option) {
-                            _this.click(options[j], _this.getContent(options[j]));
+            try {
+                var options = _this.options();
+                var flag = false;
+                for (var i = 0; i < s.correct.length; i++) {
+                    var target = s.correct[i];
+                    if (!target) {
+                        continue;
+                    }
+                    for (var j = 0; j < options.length; j++) {
+                        var optVal = _this.getOption(options[j]);
+                        var content = _this.getContent(options[j]);
+                        if (target.content == undefined || String(target.content).trim() == "") {
+                            if (optVal == String(target.option)) {
+                                _this.click(options[j], content);
+                                flag = true;
+                            }
+                        }
+                        else if (s.Equal(content, String(target.content))) {
+                            _this.click(options[j], String(target.content));
                             flag = true;
                         }
                     }
-                    else if (s.Equal(_this.getContent(options[j]), s.correct[i].content)) {
-                        _this.click(options[j], s.correct[i].content);
-                        flag = true;
-                    }
                 }
+                return resolve(flag ? "ok" : "no_match");
             }
-            if (flag) {
-                return resolve("ok");
+            catch (e) {
+                return resolve("no_match");
             }
-            return resolve("no_match");
         });
     };
     cxSelectQuestion.prototype.Correct = function () {

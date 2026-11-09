@@ -366,37 +366,83 @@ export class ToolsQuestionBankFacade implements QuestionBankFacade {
         const interval = Application.App.config.topic_interval * 1000;
         for (let i = 0; i < list.length; i++) {
             const q = list[i];
-            const type = q.GetType();
-            const options = q.GetOptions ? q.GetOptions() : [];
-            const title = q.GetTopic();
-            Application.App.log.Info("AI 答题中（" + (i + 1) + "/" + list.length + "）：" + title.substring(0, 40));
-
-            const ret = await AskAI(title, type, options);
-            if (!ret.ok || !ret.correct || ret.correct.length == 0) {
-                Application.App.log.Warn("AI 没给出答案：" + (ret.error || "无法解析"));
-                status = this.randAnswer(status, "no_answer", q);
-                if (i < list.length - 1) {
-                    await Sleep(interval);
+            try {
+                const type = q.GetType();
+                let options: Option[] = [];
+                try {
+                    options = q.GetOptions ? (q.GetOptions() || []) : [];
+                } catch (e) {
+                    Application.App.log.Warn("读取选项失败（不影响作答）：" + e);
+                    options = [];
                 }
-                continue;
-            }
+                let title = "";
+                try {
+                    title = q.GetTopic() || "";
+                } catch (e) {
+                    title = "";
+                }
+                Application.App.log.Info("AI 答题中（" + (i + 1) + "/" + list.length + "）：" + title.substring(0, 40));
 
-            const answer: Answer = {
-                index: i,
-                topic: title,
-                type: type,
-                status: "ok",
-                answers: options,
-                correct: ret.correct,
-                Equal: (content1: string, content2: string) => removeHTML(content1) == removeHTML(content2),
-            };
+                const ret = await AskAI(title, type, options);
+                if (!ret.ok || !ret.correct || ret.correct.length == 0) {
+                    Application.App.log.Warn("AI 没给出答案：" + (ret.error || "无法解析"));
+                    status = this.randAnswer(status, "no_answer", q);
+                    if (i < list.length - 1) {
+                        await Sleep(interval);
+                    }
+                    continue;
+                }
 
-            const tmp = await q.Fill(answer);
-            if (tmp == "ok") {
-                q.SetStatus("ok");
-                Application.App.log.Info("AI 答案已填写：" + JSON.stringify(ret.correct.map(v => v.option)));
-            } else {
-                status = this.randAnswer(status, tmp, q);
+                // 判断题：AI 给的是「对/错」，要换成这道题自己的选项值，不然对不上
+                let correct = ret.correct;
+                if (type == 3 && options.length > 0) {
+                    const wantTrue = !!ret.correct[0].option;
+                    const mapped = new Array<Option>();
+                    for (let k = 0; k < options.length; k++) {
+                        const text = String(options[k].content || "") + " " + String(options[k].option || "");
+                        const isTrue = /对|正确|√|✓|TRUE/i.test(text);
+                        const isFalse = /错|错误|×|✗|FALSE/i.test(text);
+                        if ((wantTrue && isTrue && !isFalse) || (!wantTrue && isFalse && !isTrue)) {
+                            mapped.push({option: String(options[k].option || ""), content: ""});
+                            break;
+                        }
+                    }
+                    if (mapped.length == 0) {
+                        // 猜不出来就按顺序：第一个当"对"，第二个当"错"
+                        const idx = wantTrue ? 0 : 1;
+                        if (options[idx]) {
+                            mapped.push({option: String(options[idx].option || ""), content: ""});
+                        }
+                    }
+                    if (mapped.length > 0) {
+                        correct = mapped;
+                    }
+                }
+
+                const answer: Answer = {
+                    index: i,
+                    topic: title,
+                    type: type,
+                    status: "ok",
+                    answers: options,
+                    correct: correct,
+                    Equal: (content1: string, content2: string) => removeHTML(content1) == removeHTML(content2),
+                };
+
+                const tmp = await q.Fill(answer);
+                if (tmp == "ok") {
+                    q.SetStatus("ok");
+                    Application.App.log.Info("AI 答案已填写：" + JSON.stringify(correct.map(v => v.option)));
+                } else {
+                    status = this.randAnswer(status, tmp, q);
+                }
+            } catch (e) {
+                Application.App.log.Warn("AI 答题异常（第 " + (i + 1) + " 题）：" + e);
+                try {
+                    status = this.randAnswer(status, "no_answer", q);
+                } catch (e2) {
+                    status = "incomplete";
+                }
             }
             if (i < list.length - 1) {
                 await Sleep(interval);

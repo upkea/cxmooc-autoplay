@@ -340,6 +340,48 @@ AI 答案已填写：["A"]
 
 这样卡在哪一步一眼就能看出来。
 
+### 追加修复：题目读取一崩，整条流程就静默死掉
+
+上线后仍然不勾选，日志停在「开始答题：识别到 1 道题，用 AI 作答」，没有后面的「AI 答题中」。排查发现是**读取题目信息时抛异常**，而 `answerWithAI()` 是 async 函数，异常直接变成未处理的 Promise rejection——没有日志、没有提示，流程就停在那里。
+
+三处会崩：
+
+| 位置 | 原因 |
+|---|---|
+| `cxQuestion.options()` | `el.querySelector(".clearfix > ul,...")` 返回 null，紧接着 `null.querySelectorAll` 抛 TypeError（新版章节测验的选项在 `.Zy_ulTop` 里，不在旧选择器范围内） |
+| `cxQuestion.GetTopic()` | `processor.GetTopic` 里 `el.querySelector(".Zy_TItle > .clearfix").innerHTML`，结构变了就是 null.innerHTML |
+| 判断题 `Fill()` | AI 给的是 `{option: true, content: true}`（布尔），`content.trim()` 直接崩 |
+
+对应修复：
+
+```ts
+// 1) 选项选择器补全 + 空值兜底
+protected options(): NodeListOf<HTMLLIElement> {
+    let tmpel = <HTMLElement>this.el.querySelector(
+        ".clearfix > ul,.clearfix ul.Zy_ulBottom.clearfix,ul.Zy_ulTk,.Zy_ulTop,ul.Zy_ulTop,.Zy_ulBottom,ul.Zy_ulBottom"
+    );
+    if (tmpel) return tmpel.querySelectorAll("li");
+    // 兜底：所有带 input/a 的 li
+    ...
+}
+
+// 2) 题干读取兜底
+public GetTopic(): string {
+    try { let ret = this.processor.GetTopic(this.el); if (ret) return String(ret).trim(); } catch (e) {}
+    let title = <HTMLElement>this.el.querySelector(".Zy_TItle,.Cy_TItle");
+    return ((title ? title.innerText : this.el.innerText) || "").replace(/\s+/g, " ").trim().substring(0, 300);
+}
+
+// 3) 判断题：把 AI 的「对/错」映射成这道题自己的选项值
+if (type == 3 && options.length > 0) { /* 按 对/正确/√ 与 错/错误/× 匹配 options */ }
+
+// 4) 每题单独 try/catch，崩了只影响这一题
+try { /* 读取选项、题干、问 AI、填写 */ }
+catch (e) { Application.App.log.Warn("AI 答题异常（第 N 题）：" + e); }
+```
+
+另外 `getOption/getContent/click` 也都加了 null 保护（没有 `input` 时退化为取 `li` 的文字、直接 `el.click()`）。
+
 ## 构建
 
 ```bash

@@ -13,7 +13,7 @@ README 里说过本项目是「基于原版的增强包」，这里把**到底�
 
 ## 代码统计
 
-对原始 master 源码树做全量比对：**13 个文件改动，+1072 行 / -11 行**（删除的 11 行是样式数值和 `QueryAnswer` 的旧实现，被重写了）。
+对原始 master 源码树做全量比对：**13 个文件改动，+1194 行 / -33 行**（删除的都是被重写的旧实现，没有删功能）。
 
 | 文件 | 类型 | 行数 |
 |---|---|---|
@@ -21,10 +21,10 @@ README 里说过本项目是「基于原版的增强包」，这里把**到底�
 | `src/internal/utils/log.ts` | 修改 | +253 |
 | `src/tampermonkey/continue-watch.ts` | 🆕 新增 | +161 |
 | `src/views/common.ts` | 修改 | +133 / -2 |
-| `src/internal/app/question.ts` | 修改 | +74 |
+| `src/internal/app/question.ts` | 修改 | +120 |
+| `src/mooc/chaoxing/question.ts` | 修改 | +102 / -22 |
 | `src/mooc/chaoxing/task.ts` | 修改 | +40 |
 | `src/internal/app/topic.ts` | 修改 | +27 / -9 |
-| `src/mooc/chaoxing/question.ts` | 修改 | +26 |
 | `src/mooc/chaoxing/course.ts` | 修改 | +7 |
 | `src/tampermonkey/cxmooc-pack.ts` | 修改 | +6 |
 | `src/tampermonkey/{cxmooc,zhihuishu,course163}.js` | 修改 | +15 ×3 |
