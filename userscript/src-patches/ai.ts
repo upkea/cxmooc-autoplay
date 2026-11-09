@@ -91,30 +91,37 @@ export function CaptureQuestionImage(el: HTMLElement): Promise<string> {
             try {
                 el.scrollIntoView({block: "center"});
                 const r = el.getBoundingClientRect();
-                let offX = 0;
-                let offY = 0;
-                let scrollX = 0;
-                let scrollY = 0;
+                // 逐层累加所有父级 iframe 的偏移（学习通题目常在 2~3 层嵌套 iframe 里）
+                let offX = r.left;
+                let offY = r.top;
+                let pw: any = w;
+                let depth = 0;
                 try {
-                    const fe: any = w.frameElement;
-                    if (fe) {
+                    while (pw && pw.parent && pw.parent !== pw && depth < 6) {
+                        let fe: any = null;
+                        try {
+                            fe = pw.frameElement;
+                        } catch (e) {
+                            fe = null;
+                        }
+                        if (!fe) {
+                            break;
+                        }
                         const fr = fe.getBoundingClientRect();
-                        offX = fr.left;
-                        offY = fr.top;
-                        const pw: any = w.parent;
-                        scrollX = pw.scrollX || 0;
-                        scrollY = pw.scrollY || 0;
-                    } else {
-                        scrollX = w.scrollX || 0;
-                        scrollY = w.scrollY || 0;
+                        offX += fr.left;
+                        offY += fr.top;
+                        pw = pw.parent;
+                        depth++;
                     }
+                    offX += pw.scrollX || 0;
+                    offY += pw.scrollY || 0;
                 } catch (e) { /* ignore */ }
                 rect = {
-                    x: Math.max(0, Math.round(offX + r.left + scrollX - 12)),
-                    y: Math.max(0, Math.round(offY + r.top + scrollY - 8)),
-                    // 四周留白：题目卡片常常比元素本身高（选项在下方），截大一点保证选项齐全
-                    width: Math.min(Math.max(Math.round(r.width + 24), 400), 1200),
-                    height: Math.min(Math.max(Math.round(r.height + 220), 380), 1600),
+                    x: Math.max(0, Math.round(offX - 12)),
+                    y: Math.max(0, Math.round(offY - 8)),
+                    // 四周留白 + 最小高度：保证题干和全部选项（A~D）都进图
+                    width: Math.min(Math.max(Math.round(r.width + 24), 420), 1200),
+                    height: Math.min(Math.max(Math.round(r.height + 300), 460), 1600),
                 };
             } catch (e) {
                 resolve(null);
