@@ -77,8 +77,7 @@ export function VisionConfig(): { base: string, key: string, model: string } {
     };
 }
 
-// 截取页面元素区域（桌面版后台 2 倍高清截图，页面无感）。
-// 注意：题目常在 iframe 里，坐标必须换算成顶层页面的文档坐标。
+// 截取题目（整页可视区截图，彻底绕开 iframe 坐标换算问题；截图时隐藏预览小窗）
 export function CaptureQuestionImage(el: HTMLElement): Promise<string> {
     return new Promise<string>((resolve) => {
         try {
@@ -87,53 +86,35 @@ export function CaptureQuestionImage(el: HTMLElement): Promise<string> {
                 resolve(null);
                 return;
             }
-            let rect: any = null;
             try {
                 el.scrollIntoView({block: "center"});
-                const r = el.getBoundingClientRect();
-                // 逐层累加所有父级 iframe 的偏移（学习通题目常在 2~3 层嵌套 iframe 里）
-                let offX = r.left;
-                let offY = r.top;
-                let pw: any = w;
-                let depth = 0;
+            } catch (e) { /* ignore */ }
+            // 隐藏预览小窗（在截图文档内，避免遮挡题目）
+            let hidden: HTMLElement = null;
+            try {
+                if (previewState && previewState.box) {
+                    hidden = previewState.box;
+                    hidden.style.visibility = "hidden";
+                }
+            } catch (e) { /* ignore */ }
+            let restore = () => {
                 try {
-                    while (pw && pw.parent && pw.parent !== pw && depth < 6) {
-                        let fe: any = null;
-                        try {
-                            fe = pw.frameElement;
-                        } catch (e) {
-                            fe = null;
-                        }
-                        if (!fe) {
-                            break;
-                        }
-                        const fr = fe.getBoundingClientRect();
-                        offX += fr.left;
-                        offY += fr.top;
-                        pw = pw.parent;
-                        depth++;
+                    if (hidden) {
+                        hidden.style.visibility = "visible";
                     }
-                    offX += pw.scrollX || 0;
-                    offY += pw.scrollY || 0;
                 } catch (e) { /* ignore */ }
-                rect = {
-                    x: Math.max(0, Math.round(offX - 12)),
-                    y: Math.max(0, Math.round(offY - 8)),
-                    // 四周留白 + 最小高度：保证题干和全部选项（A~D）都进图
-                    width: Math.min(Math.max(Math.round(r.width + 24), 420), 1200),
-                    height: Math.min(Math.max(Math.round(r.height + 300), 460), 1600),
-                };
-            } catch (e) {
-                resolve(null);
-                return;
-            }
-            if (!rect || rect.width < 40 || rect.height < 20) {
-                resolve(null);
-                return;
-            }
-            w.cxCapture(rect)
-                .then((res: any) => resolve(res && res.dataUrl ? res.dataUrl : null))
-                .catch(() => resolve(null));
+            };
+            setTimeout(() => {
+                w.cxCapture({full: true})
+                    .then((res: any) => {
+                        restore();
+                        resolve(res && res.dataUrl ? res.dataUrl : null);
+                    })
+                    .catch(() => {
+                        restore();
+                        resolve(null);
+                    });
+            }, 250);
         } catch (e) {
             resolve(null);
         }

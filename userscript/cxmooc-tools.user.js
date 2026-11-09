@@ -466,66 +466,47 @@ function VisionConfig() {
     };
 }
 exports.VisionConfig = VisionConfig;
-// 截取页面元素区域（桌面版后台 2 倍高清截图，页面无感）。
-// 注意：题目常在 iframe 里，坐标必须换算成顶层页面的文档坐标。
+// 截取题目（整页可视区截图，彻底绕开 iframe 坐标换算问题；截图时隐藏预览小窗）
 function CaptureQuestionImage(el) {
     return new Promise(function (resolve) {
         try {
-            var w = window;
-            if (typeof w.cxCapture !== "function") {
+            var w_1 = window;
+            if (typeof w_1.cxCapture !== "function") {
                 resolve(null);
                 return;
             }
-            var rect = null;
             try {
                 el.scrollIntoView({ block: "center" });
-                var r = el.getBoundingClientRect();
-                // 逐层累加所有父级 iframe 的偏移（学习通题目常在 2~3 层嵌套 iframe 里）
-                var offX = r.left;
-                var offY = r.top;
-                var pw = w;
-                var depth = 0;
+            }
+            catch (e) { /* ignore */ }
+            // 隐藏预览小窗（在截图文档内，避免遮挡题目）
+            var hidden_1 = null;
+            try {
+                if (previewState && previewState.box) {
+                    hidden_1 = previewState.box;
+                    hidden_1.style.visibility = "hidden";
+                }
+            }
+            catch (e) { /* ignore */ }
+            var restore_1 = function () {
                 try {
-                    while (pw && pw.parent && pw.parent !== pw && depth < 6) {
-                        var fe = null;
-                        try {
-                            fe = pw.frameElement;
-                        }
-                        catch (e) {
-                            fe = null;
-                        }
-                        if (!fe) {
-                            break;
-                        }
-                        var fr = fe.getBoundingClientRect();
-                        offX += fr.left;
-                        offY += fr.top;
-                        pw = pw.parent;
-                        depth++;
+                    if (hidden_1) {
+                        hidden_1.style.visibility = "visible";
                     }
-                    offX += pw.scrollX || 0;
-                    offY += pw.scrollY || 0;
                 }
                 catch (e) { /* ignore */ }
-                rect = {
-                    x: Math.max(0, Math.round(offX - 12)),
-                    y: Math.max(0, Math.round(offY - 8)),
-                    // 四周留白 + 最小高度：保证题干和全部选项（A~D）都进图
-                    width: Math.min(Math.max(Math.round(r.width + 24), 420), 1200),
-                    height: Math.min(Math.max(Math.round(r.height + 300), 460), 1600),
-                };
-            }
-            catch (e) {
-                resolve(null);
-                return;
-            }
-            if (!rect || rect.width < 40 || rect.height < 20) {
-                resolve(null);
-                return;
-            }
-            w.cxCapture(rect)
-                .then(function (res) { return resolve(res && res.dataUrl ? res.dataUrl : null); })
-                .catch(function () { return resolve(null); });
+            };
+            setTimeout(function () {
+                w_1.cxCapture({ full: true })
+                    .then(function (res) {
+                    restore_1();
+                    resolve(res && res.dataUrl ? res.dataUrl : null);
+                })
+                    .catch(function () {
+                    restore_1();
+                    resolve(null);
+                });
+            }, 250);
         }
         catch (e) {
             resolve(null);
@@ -1604,7 +1585,7 @@ var ToolsQuestionBankFacade = /** @class */ (function () {
                                             }
                                         }
                                         catch (e) { /* ignore */ }
-                                        prompt1 = "图片是一道中文" + typeName + "的题目截图（页面有字体保护，图片里显示的文字是真实的）。" +
+                                        prompt1 = "这是一张学习通章节测验页面的整页截图，当前题目和它的选项位于截图中部（页面顶部或侧边可能有其他界面元素，请忽略）。请找到这道中文" + typeName + "的题干和选项，" +
                                             "请仔细阅读图片中的题干和所有选项，先在内心分析每个选项是否正确，再给出答案。" +
                                             "最后单独一行输出：答案：X" +
                                             (type_1 == 3 ? "（A 表示对，B 表示错，只输出一个字母）" : (type_1 == 2 ? "（多选输出多个字母，如 答案：ABD）" : "（单选题只输出一个字母）")) +
