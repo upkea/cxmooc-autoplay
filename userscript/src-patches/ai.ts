@@ -73,7 +73,7 @@ export function VisionConfig(): { base: string, key: string, model: string } {
     return {
         base: base,
         key: cfg("ai_vision_key", "") || ai.key,
-        model: cfg("ai_vision_model", "glm-4.1v-thinking-flash"),
+        model: cfg("ai_vision_model", "glm-4v-plus"),
     };
 }
 
@@ -150,6 +150,7 @@ export function AskAIVision(imageDataUrl: string, prompt: string): Promise<Visio
         }
     };
     pushModel(conf.model);
+    pushModel("glm-4v-plus");
     pushModel("glm-4.1v-thinking-flash");
     pushModel("glm-4v-flash");
     return new Promise<VisionResult>((resolve) => {

@@ -462,7 +462,7 @@ function VisionConfig() {
     return {
         base: base,
         key: cfg("ai_vision_key", "") || ai.key,
-        model: cfg("ai_vision_model", "glm-4.1v-thinking-flash"),
+        model: cfg("ai_vision_model", "glm-4v-plus"),
     };
 }
 exports.VisionConfig = VisionConfig;
@@ -537,6 +537,7 @@ function AskAIVision(imageDataUrl, prompt) {
         }
     };
     pushModel(conf.model);
+    pushModel("glm-4v-plus");
     pushModel("glm-4.1v-thinking-flash");
     pushModel("glm-4v-flash");
     return new Promise(function (resolve) {
