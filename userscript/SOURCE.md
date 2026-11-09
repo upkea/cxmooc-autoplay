@@ -263,6 +263,83 @@ writeConf("ai_model", conf.model);
 
 **脚本头部** —— 让面板里填的值在刷新后不被默认值覆盖，见 [`src-patches/cxmooc-js-diff.md`](src-patches/cxmooc-js-diff.md)：先把默认 `config` 写进 `localStorage`，再用 `cx_ai_custom` 里保存过的值覆盖回来。
 
+## 7. 为什么「不自动答题」：抓题时机 + 日志补显
+
+现象：面板显示 `● 已连接`、开关也开着，但章节测验的题目一直空着，日志里也看不到「AI 答题中」。
+
+原因有两个，都是原版流程的坑：
+
+1. **抓题太早**。`Topic.QueryAnswer()` 一进来就 `addQuestion()`，而超星的题目是异步渲染的——页面 `readyState` 刚变成 `complete` 时 `.TiMu` 往往还没出现，于是抓到 0 道题；`answerWithAI()` 遇到空列表直接 `callback("success")`，上层当成"答完了"，静默跳过。
+2. **早期日志看不到**。`PageLog` 的面板在 `window load` 之后才创建，在此之前 `Application.App.log.Info()` 只进控制台（`this.el` 还是 undefined），所以「题目搜索中」这类关键日志在面板里根本不会出现，看起来像什么都没发生。
+
+修法：
+
+**`src/internal/app/topic.ts`** —— `QueryAnswer()` 改成轮询等题目出现，再开始作答：
+
+```ts
+let tries = 0;
+let attempt = () => {
+    this.addQuestion();
+    let count = this.answer.GetQuestionCount ? this.answer.GetQuestionCount() : -1;
+    if (count == 0 && tries < 12) {
+        tries++;
+        if (tries == 1) Application.App.log.Info("页面上暂时还没有题目，等待加载...");
+        setTimeout(attempt, 800);
+        return;
+    }
+    if (count <= 0) Application.App.log.Warn("等了约 10 秒仍没在页面上找到题目，跳过这个任务点");
+    this.answer.Answer((status) => { /* 原有逻辑 */ });
+};
+attempt();
+```
+
+**`src/internal/app/question.ts`** —— 配合加两处：
+
+```ts
+// QuestionBankFacade 接口 + ToolsQuestionBankFacade 实现
+GetQuestionCount(): number { return this.question.length; }
+
+// Answer() 开头，先打一行日志再分支
+let useAI = AIEnabled();
+Application.App.log.Info("开始答题：识别到 " + this.question.length + " 道题，" + (useAI ? "用 AI 作答" : "走原题库"));
+if (useAI) { this.answerWithAI(callback); return; }
+
+// answerWithAI()：空列表不再假装成功
+if (list.length == 0) {
+    Application.App.log.Warn("页面上没识别到题目（选择器 .TiMu 没命中），可能是题目还没加载出来或页面结构变了");
+    return callback("incomplete");
+}
+```
+
+**`src/internal/utils/log.ts`** —— `PageLog` 加一个待显示队列，面板出现后补刷：
+
+```ts
+protected pending: Array<Array<string>> = [];
+
+protected buffer(text: string, color: string, background: string) {
+    this.pending.push([text, color, background]);
+    if (this.pending.length > 80) this.pending.shift();
+}
+
+// window load 里，this.el 赋值之后：
+if (this.pending.length > 0) {
+    this.pending.forEach(p => this.first(p[0], p[1], p[2]));
+    this.pending = [];
+}
+```
+
+结果：刷新后打开章节测验，面板上会依次出现
+
+```
+题目搜索中...
+页面上暂时还没有题目，等待加载...     ← 如果题目还没渲染
+开始答题：识别到 1 道题，用 AI 作答
+AI 答题中（1/1）：浙江杭州西湖孤山西泠印社...
+AI 答案已填写：["A"]
+```
+
+这样卡在哪一步一眼就能看出来。
+
 ## 构建
 
 ```bash

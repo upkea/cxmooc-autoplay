@@ -928,10 +928,15 @@ var ToolsQuestionBankFacade = /** @class */ (function () {
     ToolsQuestionBankFacade.prototype.AddQuestion = function (q) {
         this.question.push(q);
     };
+    ToolsQuestionBankFacade.prototype.GetQuestionCount = function () {
+        return this.question.length;
+    };
     ToolsQuestionBankFacade.prototype.Answer = function (callback) {
         var _this = this;
         // 配置了 AI 就直接走 AI 答题，不再请求题库
-        if (ai_1.AIEnabled()) {
+        var useAI = ai_1.AIEnabled();
+        application_1.Application.App.log.Info("开始答题：识别到 " + this.question.length + " 道题，" + (useAI ? "用 AI 作答" : "走原题库"));
+        if (useAI) {
             this.answerWithAI(callback);
             return;
         }
@@ -1022,7 +1027,8 @@ var ToolsQuestionBankFacade = /** @class */ (function () {
                             list.push(this.question[i]);
                         }
                         if (list.length == 0) {
-                            return [2 /*return*/, callback("success")];
+                            application_1.Application.App.log.Warn("页面上没识别到题目（选择器 .TiMu 没命中），可能是题目还没加载出来或页面结构变了");
+                            return [2 /*return*/, callback("incomplete")];
                         }
                         status = "success";
                         interval = application_1.Application.App.config.topic_interval * 1000;
@@ -1222,17 +1228,35 @@ var Topic = /** @class */ (function () {
             }
             _this.lock = true;
             application_1.Application.App.log.Info("题目搜索中...");
-            _this.addQuestion();
-            _this.answer.Answer(function (status) {
-                _this.lock = false;
-                resolve(status);
-                if (status == "network") {
-                    return application_1.Application.App.log.Error("题库无法访问,请查看:" + config_1.SystemConfig.url);
+            // 题目可能是异步渲染的，页面刚加载完时可能一道都取不到；
+            // 先等题目出现，再开始作答，避免"0 道题"被当成答完直接跳过
+            var tries = 0;
+            var attempt = function () {
+                _this.addQuestion();
+                var count = _this.answer.GetQuestionCount ? _this.answer.GetQuestionCount() : -1;
+                if (count == 0 && tries < 12) {
+                    tries++;
+                    if (tries == 1) {
+                        application_1.Application.App.log.Info("页面上暂时还没有题目，等待加载...");
+                    }
+                    setTimeout(attempt, 800);
+                    return;
                 }
-                else if (status == "incomplete") {
-                    return application_1.Application.App.log.Warn("题库答案不全,请手动填写操作");
+                if (count <= 0) {
+                    application_1.Application.App.log.Warn("等了约 10 秒仍没在页面上找到题目，跳过这个任务点");
                 }
-            });
+                _this.answer.Answer(function (status) {
+                    _this.lock = false;
+                    resolve(status);
+                    if (status == "network") {
+                        return application_1.Application.App.log.Error("题库无法访问,请查看:" + config_1.SystemConfig.url);
+                    }
+                    else if (status == "incomplete") {
+                        return application_1.Application.App.log.Warn("题库答案不全,请手动填写操作");
+                    }
+                });
+            };
+            attempt();
         });
     };
     Topic.prototype.CollectAnswer = function () {
@@ -2144,6 +2168,8 @@ exports.ConsoleLog = ConsoleLog;
 var PageLog = /** @class */ (function () {
     function PageLog() {
         var _this = this;
+        // 面板要在 window load 之后才创建，这之前的日志先存着，创建好再补显示
+        this.pending = [];
         this.el = undefined;
         window.addEventListener("load", function () {
             _this.div = document.createElement("div");
@@ -2152,6 +2178,13 @@ var PageLog = /** @class */ (function () {
             _this.div.className = "tools-logger-panel";
             document.body.appendChild(_this.div);
             _this.el = _this.div.querySelector(".tools-notice-content");
+            // 把面板出现之前产生的日志补上
+            if (_this.pending.length > 0) {
+                _this.pending.forEach(function (p) {
+                    _this.first(p[0], p[1], p[2]);
+                });
+                _this.pending = [];
+            }
             _this.div.querySelector(".close").onclick = function () {
                 // 面板关掉时，把按钮栏里的按钮挪到悬浮小条，避免"暂停挂机"点不到
                 var bar = _this.div.querySelector("#tools-btn-bar");
@@ -2484,6 +2517,12 @@ var PageLog = /** @class */ (function () {
         console.info.apply(console, __spreadArrays(["[debug", this.getNowTime(), "]"], args));
         return this;
     };
+    PageLog.prototype.buffer = function (text, color, background) {
+        this.pending.push([text, color, background]);
+        if (this.pending.length > 80) {
+            this.pending.shift();
+        }
+    };
     PageLog.prototype.Info = function () {
         var args = [];
         for (var _i = 0; _i < arguments.length; _i++) {
@@ -2494,6 +2533,7 @@ var PageLog = /** @class */ (function () {
             this.first(text, "#409EFF", "rgba(121, 187, 255, 0.2)");
         }
         else {
+            this.buffer(text, "#409EFF", "rgba(121, 187, 255, 0.2)");
             console.info.apply(console, __spreadArrays(["[info", this.getNowTime(), "]"], args));
         }
         return this;
@@ -2506,6 +2546,9 @@ var PageLog = /** @class */ (function () {
         var text = this.toStr.apply(this, args);
         if (this.el) {
             this.first(text, "#5C3C00", "rgba(250, 236, 216, 0.4)");
+        }
+        else {
+            this.buffer(text, "#5C3C00", "rgba(250, 236, 216, 0.4)");
         }
         console.warn.apply(console, __spreadArrays(["[warn", this.getNowTime(), "]"], args));
         if (document.hidden && localStorage["is_notify"] == "true") {
@@ -2526,6 +2569,9 @@ var PageLog = /** @class */ (function () {
         if (this.el) {
             this.first(text, "#FFF0F0", "rgba(253, 226, 226, 0.5)");
         }
+        else {
+            this.buffer(text, "#FFF0F0", "rgba(253, 226, 226, 0.5)");
+        }
         console.error.apply(console, __spreadArrays(["[error", this.getNowTime(), "]"], args));
         if (localStorage["is_notify"] == "true") {
             utils_1.Noifications({
@@ -2543,6 +2589,9 @@ var PageLog = /** @class */ (function () {
         var text = this.toStr.apply(this, args);
         if (this.el) {
             this.first(text, "#ff0000", "rgba(253, 226, 226, 0.5)");
+        }
+        else {
+            this.buffer(text, "#ff0000", "rgba(253, 226, 226, 0.5)");
         }
         console.error.apply(console, __spreadArrays(["[fatal", this.getNowTime(), "]"], args));
         utils_1.Noifications({
