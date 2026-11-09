@@ -94,38 +94,94 @@ export class CxCourse extends EventListener<MoocEvent> implements MoocTaskSet {
     }
 
     protected afterPage(): HTMLElement {
-        //感觉奇葩的方法...
-        let els = document.querySelectorAll("div.ncells > *:not(.currents) > .orange01");
-        let now = <HTMLElement>document.querySelector("div.ncells > .currents");
-        for (let i = 0; i < els.length; i++) {
-            if (now.getBoundingClientRect().top < els[i].getBoundingClientRect().top) {
-                return <HTMLElement>els[i];
+        //感觉奇葩的方法...（旧版目录结构，往下找当前任务点下方的第一个）
+        try {
+            let els = document.querySelectorAll("div.ncells > *:not(.currents) > .orange01");
+            let now = <HTMLElement>document.querySelector("div.ncells > .currents");
+            if (now) {
+                for (let i = 0; i < els.length; i++) {
+                    if (now.getBoundingClientRect().top < els[i].getBoundingClientRect().top) {
+                        return <HTMLElement>els[i];
+                    }
+                }
             }
+        } catch (e) {
+            // ignore
+        }
+        return null;
+    }
+
+    // 找"下一节/下一章"入口：新版学习通导航结构变了，这里按多种方式兜底
+    protected findNextControl(): HTMLElement {
+        let sels = [
+            "span.currents ~ span",
+            ".prev_next.next",
+            ".next_prev.next",
+            "a.next",
+            "button.next",
+            ".nav-next",
+            "[class*=nextSection]",
+        ];
+        for (let i = 0; i < sels.length; i++) {
+            try {
+                let el = <HTMLElement>document.querySelector(sels[i]);
+                if (el && el.offsetParent != null) {
+                    return el;
+                }
+            } catch (e) {
+                // ignore
+            }
+        }
+        // 按可见文字找
+        try {
+            let nodes = document.querySelectorAll("span,a,button,div");
+            for (let i = 0; i < nodes.length; i++) {
+                let el = <HTMLElement>nodes[i];
+                let t = (el.innerText || el.textContent || "").trim();
+                if (/^(下一节|下一章|下一任务点|下一题|下一步|下一页)$/.test(t) && el.offsetParent != null) {
+                    return el;
+                }
+            }
+        } catch (e) {
+            // ignore
         }
         return null;
     }
 
     protected nextPage(num: number) {
-        let el = <HTMLElement>document.querySelector("span.currents ~ span") || <HTMLElement>document.querySelector(".prev_next.next");
-        if (el != undefined) {
-            return el.click();
-        }
-        //只往后执行
-        el = this.afterPage();
-        if (el == undefined) {
-            //进行有锁任务查找
-            if (document.querySelector("div.ncells > *:not(.currents) > .lock") == undefined) {
-                return this.callEvent("complete");
+        let el = this.findNextControl();
+        if (el) {
+            Application.App.log.Info("切换到下一节（" + (((el as any).innerText || el.tagName) + "").slice(0, 20) + "）");
+            try {
+                el.click();
+                return;
+            } catch (e) {
+                Application.App.log.Warn("点击下一节失败：" + e);
             }
+        }
+        //只往后执行（旧版目录）
+        el = this.afterPage();
+        if (el) {
+            try {
+                (<any>el.parentElement.querySelector("a>span")).click();
+                Application.App.log.Info("已点目录里的下一个任务点");
+                return;
+            } catch (e) {
+                Application.App.log.Warn("点下一个任务点失败：" + e);
+            }
+        }
+        //进行有锁任务查找
+        if (document.querySelector("div.ncells > *:not(.currents) > .lock") != undefined) {
+            if (num > 5) {
+                return this.callEvent("error", "被锁卡住了,请手动处理");
+            }
+            Application.App.log.Info("下一节被锁定，等待解锁...");
             return setTimeout(() => {
-                if (num > 5) {
-                    return this.callEvent("error", "被锁卡住了,请手动处理");
-                }
-                Application.App.log.Info("等待解锁");
                 this.nextPage(num + 1);
             }, 5000);
         }
-        (<any>el.parentElement.querySelector("a>span")).click();
+        Application.App.log.Info("没有找到下一节，本页任务点应已全部完成");
+        return this.callEvent("complete");
     }
 }
 

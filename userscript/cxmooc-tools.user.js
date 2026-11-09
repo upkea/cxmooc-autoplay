@@ -3534,38 +3534,98 @@ var CxCourse = /** @class */ (function (_super) {
         });
     };
     CxCourse.prototype.afterPage = function () {
-        //感觉奇葩的方法...
-        var els = document.querySelectorAll("div.ncells > *:not(.currents) > .orange01");
-        var now = document.querySelector("div.ncells > .currents");
-        for (var i = 0; i < els.length; i++) {
-            if (now.getBoundingClientRect().top < els[i].getBoundingClientRect().top) {
-                return els[i];
+        //感觉奇葩的方法...（旧版目录结构，往下找当前任务点下方的第一个）
+        try {
+            var els = document.querySelectorAll("div.ncells > *:not(.currents) > .orange01");
+            var now = document.querySelector("div.ncells > .currents");
+            if (now) {
+                for (var i = 0; i < els.length; i++) {
+                    if (now.getBoundingClientRect().top < els[i].getBoundingClientRect().top) {
+                        return els[i];
+                    }
+                }
             }
+        }
+        catch (e) {
+            // ignore
+        }
+        return null;
+    };
+    // 找"下一节/下一章"入口：新版学习通导航结构变了，这里按多种方式兜底
+    CxCourse.prototype.findNextControl = function () {
+        var sels = [
+            "span.currents ~ span",
+            ".prev_next.next",
+            ".next_prev.next",
+            "a.next",
+            "button.next",
+            ".nav-next",
+            "[class*=nextSection]",
+        ];
+        for (var i = 0; i < sels.length; i++) {
+            try {
+                var el = document.querySelector(sels[i]);
+                if (el && el.offsetParent != null) {
+                    return el;
+                }
+            }
+            catch (e) {
+                // ignore
+            }
+        }
+        // 按可见文字找
+        try {
+            var nodes = document.querySelectorAll("span,a,button,div");
+            for (var i = 0; i < nodes.length; i++) {
+                var el = nodes[i];
+                var t = (el.innerText || el.textContent || "").trim();
+                if (/^(下一节|下一章|下一任务点|下一题|下一步|下一页)$/.test(t) && el.offsetParent != null) {
+                    return el;
+                }
+            }
+        }
+        catch (e) {
+            // ignore
         }
         return null;
     };
     CxCourse.prototype.nextPage = function (num) {
         var _this = this;
-        var el = document.querySelector("span.currents ~ span") || document.querySelector(".prev_next.next");
-        if (el != undefined) {
-            return el.click();
-        }
-        //只往后执行
-        el = this.afterPage();
-        if (el == undefined) {
-            //进行有锁任务查找
-            if (document.querySelector("div.ncells > *:not(.currents) > .lock") == undefined) {
-                return this.callEvent("complete");
+        var el = this.findNextControl();
+        if (el) {
+            application_1.Application.App.log.Info("切换到下一节（" + ((el.innerText || el.tagName) + "").slice(0, 20) + "）");
+            try {
+                el.click();
+                return;
             }
+            catch (e) {
+                application_1.Application.App.log.Warn("点击下一节失败：" + e);
+            }
+        }
+        //只往后执行（旧版目录）
+        el = this.afterPage();
+        if (el) {
+            try {
+                el.parentElement.querySelector("a>span").click();
+                application_1.Application.App.log.Info("已点目录里的下一个任务点");
+                return;
+            }
+            catch (e) {
+                application_1.Application.App.log.Warn("点下一个任务点失败：" + e);
+            }
+        }
+        //进行有锁任务查找
+        if (document.querySelector("div.ncells > *:not(.currents) > .lock") != undefined) {
+            if (num > 5) {
+                return this.callEvent("error", "被锁卡住了,请手动处理");
+            }
+            application_1.Application.App.log.Info("下一节被锁定，等待解锁...");
             return setTimeout(function () {
-                if (num > 5) {
-                    return _this.callEvent("error", "被锁卡住了,请手动处理");
-                }
-                application_1.Application.App.log.Info("等待解锁");
                 _this.nextPage(num + 1);
             }, 5000);
         }
-        el.parentElement.querySelector("a>span").click();
+        application_1.Application.App.log.Info("没有找到下一节，本页任务点应已全部完成");
+        return this.callEvent("complete");
     };
     return CxCourse;
 }(event_1.EventListener));
@@ -5208,22 +5268,52 @@ var CxTopicControlBar = /** @class */ (function (_super) {
     CxTopicControlBar.prototype.defaultBtn = function () {
         var _this = this;
         _super.prototype.defaultBtn.call(this);
-        // 用 AI 答题时不需要「搜索题目」按钮（那是走原题库的入口），直接不显示
-        if (ai_1.AIEnabled()) {
-            return;
-        }
-        var topic = utils_1.CssBtn(utils_2.createBtn("搜索题目", "点击搜索题目答案", "cx-btn"));
-        topic.style.background = "#3fae93";
-        this.prev.append(topic);
-        // 绑定事件
-        topic.onclick = function () { return __awaiter(_this, void 0, void 0, function () {
-            return __generator(this, function (_a) {
-                topic.innerText = "答案搜索中...";
-                this.task.Start().then(function (ret) {
-                    ret = ret || "搜索题目";
-                    topic.innerText = question_1.QuestionStatusString(ret);
+        var isAI = ai_1.AIEnabled();
+        // 用 AI 答题时不显示「搜索题目」（那是走原题库的入口）
+        if (!isAI) {
+            var topic_2 = utils_1.CssBtn(utils_2.createBtn("搜索题目", "点击搜索题目答案", "cx-btn"));
+            topic_2.style.background = "#3fae93";
+            this.prev.append(topic_2);
+            // 绑定事件
+            topic_2.onclick = function () { return __awaiter(_this, void 0, void 0, function () {
+                return __generator(this, function (_a) {
+                    topic_2.innerText = "答案搜索中...";
+                    this.task.Start().then(function (ret) {
+                        ret = ret || "搜索题目";
+                        topic_2.innerText = question_1.QuestionStatusString(ret);
+                    });
+                    return [2 /*return*/];
                 });
-                return [2 /*return*/];
+            }); };
+        }
+        // 提交按钮：答案填完后手动点它，或等自动挂机间隔到点自动提交
+        var submit = utils_1.CssBtn(utils_2.createBtn("提交答案", "题目填完后点此提交", "cx-btn"));
+        submit.style.background = "#e6a23c";
+        this.prev.append(submit);
+        submit.onclick = function () { return __awaiter(_this, void 0, void 0, function () {
+            var e_1;
+            return __generator(this, function (_a) {
+                switch (_a.label) {
+                    case 0:
+                        if (submit.innerText == "提交中...") {
+                            return [2 /*return*/];
+                        }
+                        submit.innerText = "提交中...";
+                        _a.label = 1;
+                    case 1:
+                        _a.trys.push([1, 3, , 4]);
+                        return [4 /*yield*/, this.task.ManualSubmit()];
+                    case 2:
+                        _a.sent();
+                        submit.innerText = "已提交";
+                        return [3 /*break*/, 4];
+                    case 3:
+                        e_1 = _a.sent();
+                        submit.innerText = "提交失败 重试";
+                        application_1.Application.App.log.Warn("手动提交失败：" + ((e_1 && e_1.message) ? e_1.message : e_1));
+                        return [3 /*break*/, 4];
+                    case 4: return [2 /*return*/];
+                }
             });
         }); };
     };
@@ -5286,7 +5376,7 @@ var TopicAdapter = /** @class */ (function (_super) {
                         if (_this.status == "success") {
                             _this.topic.Submit().then(function () {
                                 resolve();
-                            });
+                            }).catch(function () { return resolve(); });
                         }
                         else {
                             resolve();
@@ -5294,6 +5384,10 @@ var TopicAdapter = /** @class */ (function (_super) {
                     })];
             });
         });
+    };
+    // 手动点「提交答案」按钮时走这里：不管状态直接提交
+    TopicAdapter.prototype.ManualSubmit = function () {
+        return Promise.resolve(this.topic.Submit());
     };
     return TopicAdapter;
 }(task_1.CxTask));
@@ -5355,51 +5449,75 @@ var CxCourseTopic = /** @class */ (function (_super) {
         }
         return _super.prototype.QueryAnswer.call(this);
     };
+    // 在测试页文档里找提交/确认按钮（新版选择器和旧版都试，再按文字兜底）
+    CxCourseTopic.prototype.findBtn = function (doc, texts) {
+        var sels = [".Btn_blue_1", ".bluebtn", "#submitBtn", ".btnBlue", ".greenBtn", ".cy-btn", ".Zj_btn", ".submit", ".subBtn", ".mark_btn", "input[type=submit]"];
+        for (var i = 0; i < sels.length; i++) {
+            try {
+                var el = doc.querySelector(sels[i]);
+                if (el) {
+                    return el;
+                }
+            }
+            catch (e) {
+                // ignore
+            }
+        }
+        try {
+            var nodes = doc.querySelectorAll("a,button,span,.btn,div");
+            for (var i = 0; i < nodes.length; i++) {
+                var el = nodes[i];
+                var t = (el.innerText || el.textContent || "").trim();
+                if (texts.test(t)) {
+                    return el;
+                }
+            }
+        }
+        catch (e) {
+            // ignore
+        }
+        return null;
+    };
     CxCourseTopic.prototype.Submit = function () {
         var _this = this;
         return new Promise(function (resolve) {
             application_1.Application.App.log.Info("准备提交答案");
             var self = _this;
+            var doc = _this.context.document;
             _this.context.setTimeout(function () {
-                var submit = _this.context.document.querySelector(".Btn_blue_1");
-                submit.click();
-                _this.context.setTimeout(function () {
-                    var prompt = _this.context.document.querySelector("#tipContent").innerHTML;
-                    if (prompt.indexOf("未做完") > 0) {
-                        alert("提示:" + prompt);
-                        resolve("未做完");
-                        application_1.Application.App.log.Fatal("有题目未完成,请手动操作.提示:" + prompt);
-                        return;
+                try {
+                    // 第一步：点「交卷 / 提交」主按钮
+                    var submit = self.findBtn(doc, /^(交卷|提交|提交答案|确认|确认提交|立即提交|交作业)$/);
+                    if (!submit) {
+                        application_1.Application.App.log.Warn("没找到提交按钮，请手动点页面上的「提交 / 交卷」");
+                        return resolve("no_submit_btn");
                     }
-                    var timer = _this.context.setInterval(function () {
-                        prompt = document.getElementById("validate");
-                        if (prompt.style.display != 'none') {
-                            //等待验证码接管
-                            return;
-                        }
-                        _this.context.clearInterval(timer);
-                        _this.context.parent.document.querySelector("#frame_content")
-                            .addEventListener("load", function () {
-                            return __awaiter(this, void 0, void 0, function () {
-                                return __generator(this, function (_a) {
-                                    switch (_a.label) {
-                                        case 0:
-                                            if (!(this.contentWindow.document.URL.indexOf('selectWorkQuestionYiPiYue') > 0)) return [3 /*break*/, 2];
-                                            return [4 /*yield*/, self.CollectAnswer()];
-                                        case 1:
-                                            _a.sent();
-                                            resolve(undefined);
-                                            _a.label = 2;
-                                        case 2: return [2 /*return*/];
-                                    }
-                                });
-                            });
-                        });
-                        //确定提交
-                        var submit = _this.context.document.querySelector(".bluebtn");
+                    application_1.Application.App.log.Info("点击提交按钮：" + String(submit.innerText || submit.tagName || ""));
+                    try {
                         submit.click();
-                    }, 2000);
-                }, 2000);
+                    }
+                    catch (e) {
+                        // ignore
+                    }
+                    // 第二步：等确认框出来，点「确定」确认提交
+                    self.context.setTimeout(function () {
+                        try {
+                            var confirm_1 = self.findBtn(doc, /^(确定|确认|是|提交|交卷|确认提交)$/);
+                            if (confirm_1) {
+                                confirm_1.click();
+                                application_1.Application.App.log.Info("已点确认提交");
+                            }
+                            resolve(undefined);
+                        }
+                        catch (e) {
+                            resolve(undefined);
+                        }
+                    }, 2500);
+                }
+                catch (e) {
+                    application_1.Application.App.log.Warn("提交失败：" + ((e && e.message) ? e.message : e));
+                    resolve(undefined);
+                }
             }, 2000);
         });
     };
