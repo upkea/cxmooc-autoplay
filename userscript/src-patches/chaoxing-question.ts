@@ -291,7 +291,12 @@ class cxSelectQuestion extends cxQuestion implements Question {
     protected getOption(el: HTMLElement): string {
         let ipt = <HTMLInputElement>el.querySelector("input");
         if (ipt == null) {
-            return (el.innerText || "").trim().substring(0, 2);
+            let txt = (el.innerText || "").trim();
+            let m = txt.match(/^([A-Ha-h])\s*[.、:：)）]?/);
+            if (m) {
+                return m[1].toUpperCase();
+            }
+            return txt.substring(0, 20);
         }
         return ipt.value;
     }
@@ -311,20 +316,39 @@ class cxSelectQuestion extends cxQuestion implements Question {
         }
         let ipt = <HTMLInputElement>el.querySelector("label > input,input");
         if (ipt) {
+            try {
+                if (!ipt.checked) {
+                    ipt.click();
+                }
+            } catch (e) {
+                // 页面脚本可能抛错，忽略
+            }
+            if (!ipt.checked) {
+                // 有些页面 input 是隐藏的，真正生效的是外层 label / li
+                try {
+                    let label = <HTMLElement>el.querySelector("label");
+                    if (label) {
+                        label.click();
+                    }
+                } catch (e) {
+                    // ignore
+                }
+            }
             if (!ipt.checked) {
                 try {
-                    ipt.click();
+                    el.click();
                 } catch (e) {
-                    // 页面脚本可能抛错，忽略
+                    // ignore
                 }
-                if (!ipt.checked) {
-                    // 兜底：直接改 checked 再派发事件，绕过页面的 click 处理
-                    try {
-                        ipt.checked = true;
-                        ipt.dispatchEvent(new Event("change", {bubbles: true}));
-                    } catch (e) {
-                        // ignore
-                    }
+            }
+            if (!ipt.checked) {
+                // 最后兜底：直接改 checked 再派发事件
+                try {
+                    ipt.checked = true;
+                    ipt.dispatchEvent(new Event("change", {bubbles: true}));
+                    ipt.dispatchEvent(new Event("click", {bubbles: true}));
+                } catch (e) {
+                    // ignore
                 }
             }
         } else {
@@ -352,24 +376,50 @@ class cxSelectQuestion extends cxQuestion implements Question {
         return new Promise(resolve => {
             try {
                 let options = this.options();
+                if (!options || options.length == 0) {
+                    try {
+                        this.AddNotice("没有找到选项");
+                    } catch (e) {
+                        // ignore
+                    }
+                    return resolve("no_match");
+                }
                 let flag = false;
                 for (let i = 0; i < s.correct.length; i++) {
                     let target = s.correct[i];
                     if (!target) {
                         continue;
                     }
+                    let targetOpt = String(target.option == undefined ? "" : target.option).trim();
+                    let targetContent = String(target.content == undefined ? "" : target.content).trim();
+                    let hit = -1;
+                    // 1) 按选项自带的 value 匹配（A/B/C/D 或 true/false）
                     for (let j = 0; j < options.length; j++) {
-                        let optVal = this.getOption(options[j]);
-                        let content = this.getContent(options[j]);
-                        if (target.content == undefined || String(target.content).trim() == "") {
-                            if (optVal == String(target.option)) {
-                                this.click(options[j], content);
-                                flag = true;
-                            }
-                        } else if (s.Equal(content, String(target.content))) {
-                            this.click(options[j], String(target.content));
-                            flag = true;
+                        let val = String(this.getOption(options[j]) || "").trim();
+                        if (targetOpt != "" && val.toLowerCase() == targetOpt.toLowerCase()) {
+                            hit = j;
+                            break;
                         }
+                    }
+                    // 2) 按选项文字匹配
+                    if (hit < 0 && targetContent != "") {
+                        for (let j = 0; j < options.length; j++) {
+                            if (s.Equal(this.getContent(options[j]), targetContent)) {
+                                hit = j;
+                                break;
+                            }
+                        }
+                    }
+                    // 3) 兜底：字母按顺序（A->第1个，D->第4个）
+                    if (hit < 0 && /^[A-Ha-h]$/.test(targetOpt)) {
+                        let idx = targetOpt.toUpperCase().charCodeAt(0) - 65;
+                        if (idx >= 0 && idx < options.length) {
+                            hit = idx;
+                        }
+                    }
+                    if (hit >= 0) {
+                        this.click(options[hit], targetContent);
+                        flag = true;
                     }
                 }
                 return resolve(flag ? "ok" : "no_match");

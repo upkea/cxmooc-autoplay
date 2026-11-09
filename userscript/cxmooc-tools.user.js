@@ -4156,7 +4156,12 @@ var cxSelectQuestion = /** @class */ (function (_super) {
     cxSelectQuestion.prototype.getOption = function (el) {
         var ipt = el.querySelector("input");
         if (ipt == null) {
-            return (el.innerText || "").trim().substring(0, 2);
+            var txt = (el.innerText || "").trim();
+            var m = txt.match(/^([A-Ha-h])\s*[.、:：)）]?/);
+            if (m) {
+                return m[1].toUpperCase();
+            }
+            return txt.substring(0, 20);
         }
         return ipt.value;
     };
@@ -4174,22 +4179,43 @@ var cxSelectQuestion = /** @class */ (function (_super) {
         }
         var ipt = el.querySelector("label > input,input");
         if (ipt) {
-            if (!ipt.checked) {
-                try {
+            try {
+                if (!ipt.checked) {
                     ipt.click();
                 }
-                catch (e) {
-                    // 页面脚本可能抛错，忽略
+            }
+            catch (e) {
+                // 页面脚本可能抛错，忽略
+            }
+            if (!ipt.checked) {
+                // 有些页面 input 是隐藏的，真正生效的是外层 label / li
+                try {
+                    var label = el.querySelector("label");
+                    if (label) {
+                        label.click();
+                    }
                 }
-                if (!ipt.checked) {
-                    // 兜底：直接改 checked 再派发事件，绕过页面的 click 处理
-                    try {
-                        ipt.checked = true;
-                        ipt.dispatchEvent(new Event("change", { bubbles: true }));
-                    }
-                    catch (e) {
-                        // ignore
-                    }
+                catch (e) {
+                    // ignore
+                }
+            }
+            if (!ipt.checked) {
+                try {
+                    el.click();
+                }
+                catch (e) {
+                    // ignore
+                }
+            }
+            if (!ipt.checked) {
+                // 最后兜底：直接改 checked 再派发事件
+                try {
+                    ipt.checked = true;
+                    ipt.dispatchEvent(new Event("change", { bubbles: true }));
+                    ipt.dispatchEvent(new Event("click", { bubbles: true }));
+                }
+                catch (e) {
+                    // ignore
                 }
             }
         }
@@ -4219,25 +4245,51 @@ var cxSelectQuestion = /** @class */ (function (_super) {
         return new Promise(function (resolve) {
             try {
                 var options = _this.options();
+                if (!options || options.length == 0) {
+                    try {
+                        _this.AddNotice("没有找到选项");
+                    }
+                    catch (e) {
+                        // ignore
+                    }
+                    return resolve("no_match");
+                }
                 var flag = false;
                 for (var i = 0; i < s.correct.length; i++) {
                     var target = s.correct[i];
                     if (!target) {
                         continue;
                     }
+                    var targetOpt = String(target.option == undefined ? "" : target.option).trim();
+                    var targetContent = String(target.content == undefined ? "" : target.content).trim();
+                    var hit = -1;
+                    // 1) 按选项自带的 value 匹配（A/B/C/D 或 true/false）
                     for (var j = 0; j < options.length; j++) {
-                        var optVal = _this.getOption(options[j]);
-                        var content = _this.getContent(options[j]);
-                        if (target.content == undefined || String(target.content).trim() == "") {
-                            if (optVal == String(target.option)) {
-                                _this.click(options[j], content);
-                                flag = true;
+                        var val = String(_this.getOption(options[j]) || "").trim();
+                        if (targetOpt != "" && val.toLowerCase() == targetOpt.toLowerCase()) {
+                            hit = j;
+                            break;
+                        }
+                    }
+                    // 2) 按选项文字匹配
+                    if (hit < 0 && targetContent != "") {
+                        for (var j = 0; j < options.length; j++) {
+                            if (s.Equal(_this.getContent(options[j]), targetContent)) {
+                                hit = j;
+                                break;
                             }
                         }
-                        else if (s.Equal(content, String(target.content))) {
-                            _this.click(options[j], String(target.content));
-                            flag = true;
+                    }
+                    // 3) 兜底：字母按顺序（A->第1个，D->第4个）
+                    if (hit < 0 && /^[A-Ha-h]$/.test(targetOpt)) {
+                        var idx = targetOpt.toUpperCase().charCodeAt(0) - 65;
+                        if (idx >= 0 && idx < options.length) {
+                            hit = idx;
                         }
+                    }
+                    if (hit >= 0) {
+                        _this.click(options[hit], targetContent);
+                        flag = true;
                     }
                 }
                 return resolve(flag ? "ok" : "no_match");
