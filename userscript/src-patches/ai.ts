@@ -77,8 +77,8 @@ export function VisionConfig(): { base: string, key: string, model: string } {
     };
 }
 
-// 截取页面元素区域（桌面版会放大 2 倍截图，文字更清晰）
-let captureSeq = 0;
+// 截取页面元素区域（桌面版后台 2 倍高清截图，页面无感）。
+// 注意：题目常在 iframe 里，坐标必须换算成顶层页面的文档坐标。
 export function CaptureQuestionImage(el: HTMLElement): Promise<string> {
     return new Promise<string>((resolve) => {
         try {
@@ -87,26 +87,45 @@ export function CaptureQuestionImage(el: HTMLElement): Promise<string> {
                 resolve(null);
                 return;
             }
-            let id = "cxq" + (++captureSeq);
+            let rect: any = null;
             try {
-                el.setAttribute("data-cxq", id);
+                el.scrollIntoView({block: "center"});
+                const r = el.getBoundingClientRect();
+                let offX = 0;
+                let offY = 0;
+                let scrollX = 0;
+                let scrollY = 0;
+                try {
+                    const fe: any = w.frameElement;
+                    if (fe) {
+                        const fr = fe.getBoundingClientRect();
+                        offX = fr.left;
+                        offY = fr.top;
+                        const pw: any = w.parent;
+                        scrollX = pw.scrollX || 0;
+                        scrollY = pw.scrollY || 0;
+                    } else {
+                        scrollX = w.scrollX || 0;
+                        scrollY = w.scrollY || 0;
+                    }
+                } catch (e) { /* ignore */ }
+                rect = {
+                    x: Math.max(0, Math.round(offX + r.left + scrollX)),
+                    y: Math.max(0, Math.round(offY + r.top + scrollY)),
+                    width: Math.min(Math.max(Math.round(r.width), 1), 1200),
+                    height: Math.min(Math.max(Math.round(r.height), 1), 1600),
+                };
             } catch (e) {
                 resolve(null);
                 return;
             }
-            w.cxCapture({id: id})
-                .then((res: any) => {
-                    try {
-                        el.removeAttribute("data-cxq");
-                    } catch (e) { /* ignore */ }
-                    resolve(res && res.dataUrl ? res.dataUrl : null);
-                })
-                .catch(() => {
-                    try {
-                        el.removeAttribute("data-cxq");
-                    } catch (e) { /* ignore */ }
-                    resolve(null);
-                });
+            if (!rect || rect.width < 40 || rect.height < 20) {
+                resolve(null);
+                return;
+            }
+            w.cxCapture({rect: rect})
+                .then((res: any) => resolve(res && res.dataUrl ? res.dataUrl : null))
+                .catch(() => resolve(null));
         } catch (e) {
             resolve(null);
         }

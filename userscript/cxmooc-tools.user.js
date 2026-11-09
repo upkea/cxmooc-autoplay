@@ -466,8 +466,8 @@ function VisionConfig() {
     };
 }
 exports.VisionConfig = VisionConfig;
-// 截取页面元素区域（桌面版会放大 2 倍截图，文字更清晰）
-var captureSeq = 0;
+// 截取页面元素区域（桌面版后台 2 倍高清截图，页面无感）。
+// 注意：题目常在 iframe 里，坐标必须换算成顶层页面的文档坐标。
 function CaptureQuestionImage(el) {
     return new Promise(function (resolve) {
         try {
@@ -476,29 +476,48 @@ function CaptureQuestionImage(el) {
                 resolve(null);
                 return;
             }
-            var id = "cxq" + (++captureSeq);
+            var rect = null;
             try {
-                el.setAttribute("data-cxq", id);
+                el.scrollIntoView({ block: "center" });
+                var r = el.getBoundingClientRect();
+                var offX = 0;
+                var offY = 0;
+                var scrollX = 0;
+                var scrollY = 0;
+                try {
+                    var fe = w.frameElement;
+                    if (fe) {
+                        var fr = fe.getBoundingClientRect();
+                        offX = fr.left;
+                        offY = fr.top;
+                        var pw = w.parent;
+                        scrollX = pw.scrollX || 0;
+                        scrollY = pw.scrollY || 0;
+                    }
+                    else {
+                        scrollX = w.scrollX || 0;
+                        scrollY = w.scrollY || 0;
+                    }
+                }
+                catch (e) { /* ignore */ }
+                rect = {
+                    x: Math.max(0, Math.round(offX + r.left + scrollX)),
+                    y: Math.max(0, Math.round(offY + r.top + scrollY)),
+                    width: Math.min(Math.max(Math.round(r.width), 1), 1200),
+                    height: Math.min(Math.max(Math.round(r.height), 1), 1600),
+                };
             }
             catch (e) {
                 resolve(null);
                 return;
             }
-            w.cxCapture({ id: id })
-                .then(function (res) {
-                try {
-                    el.removeAttribute("data-cxq");
-                }
-                catch (e) { /* ignore */ }
-                resolve(res && res.dataUrl ? res.dataUrl : null);
-            })
-                .catch(function () {
-                try {
-                    el.removeAttribute("data-cxq");
-                }
-                catch (e) { /* ignore */ }
+            if (!rect || rect.width < 40 || rect.height < 20) {
                 resolve(null);
-            });
+                return;
+            }
+            w.cxCapture({ rect: rect })
+                .then(function (res) { return resolve(res && res.dataUrl ? res.dataUrl : null); })
+                .catch(function () { return resolve(null); });
         }
         catch (e) {
             resolve(null);
