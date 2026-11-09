@@ -82,7 +82,9 @@ export class CxTaskControlBar {
     }
 
     protected moveToNoticePanel(tryCount: number) {
-        let bar = <HTMLElement>document.getElementById("tools-btn-bar");
+        // 面板开着就挂面板，关掉了就挂它的悬浮替身
+        let bar = <HTMLElement>document.getElementById("tools-btn-bar") ||
+            <HTMLElement>document.getElementById("tools-btn-float");
         if (bar) {
             // 同一任务点被重复创建（页面多次 load）时，先清掉旧的那一组，避免叠出两排按钮
             let key = this.prev.getAttribute("data-cx-key");
