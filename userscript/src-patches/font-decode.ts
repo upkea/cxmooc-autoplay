@@ -128,33 +128,48 @@ export async function DecodeChaoxingFont(win: any): Promise<boolean> {
             if (fonts && fonts.ready) {
                 await Promise.race([fonts.ready, new Promise((res) => setTimeout(res, 2000))]);
             }
-            if (fonts && typeof fonts.check === "function" && !fonts.check('28px "' + family + '"')) {
-                // 页面字体还没生效——先不动页面，下一轮再试
-                console.log("[CXFONT] page font not ready: " + family);
-                return false;
-            }
         } catch (e) {
             // ignore
         }
 
-        // 目标字符用「页面加密字体」渲染
+        // 目标字符用「页面加密字体」渲染；字体可能还在异步加载，blank 时重试最多 4 次
         let quoted = '"' + family + '"';
         let tHashes: { [k: string]: string } = {};
         let blankCount = 0;
-        for (let i = 0; i < targets.length; i++) {
+        let sampleText = String(els[0].textContent || "").slice(0, 100);
+        for (let attempt = 0; attempt < 4; attempt++) {
             try {
-                let bits = glyphBits(doc, targets[i], quoted);
-                tHashes[targets[i]] = bits;
-                if (bitCount(bits) < 6) {
-                    blankCount++;
+                let fonts: any = doc.fonts;
+                if (fonts && typeof fonts.load === "function") {
+                    await Promise.race([
+                        fonts.load("28px " + quoted, sampleText),
+                        new Promise((res) => setTimeout(res, 1200)),
+                    ]);
                 }
             } catch (e) {
                 // ignore
             }
+            tHashes = {};
+            blankCount = 0;
+            for (let i = 0; i < targets.length; i++) {
+                try {
+                    let bits = glyphBits(doc, targets[i], quoted);
+                    tHashes[targets[i]] = bits;
+                    if (bitCount(bits) < 6) {
+                        blankCount++;
+                    }
+                } catch (e) {
+                    // ignore
+                }
+            }
+            try {
+                console.log("[CXFONT] try#" + (attempt + 1) + " blank=" + blankCount + "/" + targets.length);
+            } catch (e) { /* ignore */ }
+            if (blankCount <= targets.length * 0.5) {
+                break;
+            }
+            await new Promise((res) => setTimeout(res, 500));
         }
-        try {
-            console.log("[CXFONT] targets=" + targets.length + " blank=" + blankCount + " sample=" + JSON.stringify(String(els[0].textContent || "").slice(0, 20)));
-        } catch (e) { /* ignore */ }
         // 加密字体渲染不出字形 → 说明拿错了字体（或页面字体未生效），保持原样
         if (blankCount > targets.length * 0.5) {
             console.log("[CXFONT] font renders blank, skip (keep page untouched)");

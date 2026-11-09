@@ -4295,11 +4295,11 @@ var charMapCache = {};
 var candidateCache = {};
 function DecodeChaoxingFont(win) {
     return __awaiter(this, void 0, Promise, function () {
-        var doc_1, els, family, cs, targets, seen, i, t, k, ch, fonts, e_1, quoted, tHashes, blankCount, i, bits, getTable, cache, newCount, ti, t, targetBits, bestChar, bestDist, fi, table, ci, dist, done, ti, rate, i, el, text, t, e_2;
+        var doc_1, els, family, cs, targets, seen, i, t, k, ch, fonts, e_1, quoted, tHashes, blankCount, sampleText, attempt, fonts, e_2, i, bits, getTable, cache, newCount, ti, t, targetBits, bestChar, bestDist, fi, table, ci, dist, done, ti, rate, i, el, text, t, e_3;
         return __generator(this, function (_a) {
             switch (_a.label) {
                 case 0:
-                    _a.trys.push([0, 6, , 7]);
+                    _a.trys.push([0, 15, , 16]);
                     doc_1 = win && win.document;
                     if (!doc_1) {
                         return [2 /*return*/, false];
@@ -4347,18 +4347,36 @@ function DecodeChaoxingFont(win) {
                 case 2:
                     _a.sent();
                     _a.label = 3;
-                case 3:
-                    if (fonts && typeof fonts.check === "function" && !fonts.check('28px "' + family + '"')) {
-                        // 页面字体还没生效——先不动页面，下一轮再试
-                        console.log("[CXFONT] page font not ready: " + family);
-                        return [2 /*return*/, false];
-                    }
-                    return [3 /*break*/, 5];
+                case 3: return [3 /*break*/, 5];
                 case 4:
                     e_1 = _a.sent();
                     return [3 /*break*/, 5];
                 case 5:
                     quoted = '"' + family + '"';
+                    tHashes = {};
+                    blankCount = 0;
+                    sampleText = String(els[0].textContent || "").slice(0, 100);
+                    attempt = 0;
+                    _a.label = 6;
+                case 6:
+                    if (!(attempt < 4)) return [3 /*break*/, 14];
+                    _a.label = 7;
+                case 7:
+                    _a.trys.push([7, 10, , 11]);
+                    fonts = doc_1.fonts;
+                    if (!(fonts && typeof fonts.load === "function")) return [3 /*break*/, 9];
+                    return [4 /*yield*/, Promise.race([
+                            fonts.load("28px " + quoted, sampleText),
+                            new Promise(function (res) { return setTimeout(res, 1200); }),
+                        ])];
+                case 8:
+                    _a.sent();
+                    _a.label = 9;
+                case 9: return [3 /*break*/, 11];
+                case 10:
+                    e_2 = _a.sent();
+                    return [3 /*break*/, 11];
+                case 11:
                     tHashes = {};
                     blankCount = 0;
                     for (i = 0; i < targets.length; i++) {
@@ -4374,9 +4392,20 @@ function DecodeChaoxingFont(win) {
                         }
                     }
                     try {
-                        console.log("[CXFONT] targets=" + targets.length + " blank=" + blankCount + " sample=" + JSON.stringify(String(els[0].textContent || "").slice(0, 20)));
+                        console.log("[CXFONT] try#" + (attempt + 1) + " blank=" + blankCount + "/" + targets.length);
                     }
                     catch (e) { /* ignore */ }
+                    if (blankCount <= targets.length * 0.5) {
+                        return [3 /*break*/, 14];
+                    }
+                    return [4 /*yield*/, new Promise(function (res) { return setTimeout(res, 500); })];
+                case 12:
+                    _a.sent();
+                    _a.label = 13;
+                case 13:
+                    attempt++;
+                    return [3 /*break*/, 6];
+                case 14:
                     // 加密字体渲染不出字形 → 说明拿错了字体（或页面字体未生效），保持原样
                     if (blankCount > targets.length * 0.5) {
                         console.log("[CXFONT] font renders blank, skip (keep page untouched)");
@@ -4464,10 +4493,10 @@ function DecodeChaoxingFont(win) {
                     }
                     application_1.Application.App.log.Info("字体解密完成，还原 " + done + "/" + targets.length + " 个字符" + (rate >= 0.95 ? "（已去加密字体）" : "（文本已替换，字体类名保留）"));
                     return [2 /*return*/, true];
-                case 6:
-                    e_2 = _a.sent();
+                case 15:
+                    e_3 = _a.sent();
                     return [2 /*return*/, false];
-                case 7: return [2 /*return*/];
+                case 16: return [2 /*return*/];
             }
         });
     });
