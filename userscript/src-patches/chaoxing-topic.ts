@@ -220,32 +220,69 @@ export class CxCourseTopic extends Topic {
         return null;
     }
 
-    // 找确认弹窗里的「确定/确认」（不能匹配到主「提交」按钮，否则会重复点）
+    // 找确认弹窗里的按钮：弹窗文案是「确认提交？」，里面的按钮有时也叫「提交」
+    // 所以不能直接全页找「提交」，否则会点回主按钮。这里先定位弹窗，再在弹窗内点。
     private findConfirmBtn(doc: any): HTMLElement {
-        // 注意：这里不能包含「提交」，否则没有弹窗时会把主提交按钮又点一次
-        let want = /^(确定|确认|确认提交|是|继续提交)$/;
-        let last: HTMLElement = null;
+        let wantBtn = /^(提交|确定|确认|确认提交|是)$/;
+        // 1) 找出「可见 + 含确认字样 + 内含候选按钮」的弹窗容器，取最内层那个
+        let dialog: HTMLElement = null;
         try {
-            let nodes = doc.querySelectorAll("button,a,span,div");
+            let nodes = doc.querySelectorAll("div,section,form");
+            for (let i = 0; i < nodes.length; i++) {
+                let el = <HTMLElement>nodes[i];
+                if (!this.isVisible(el)) {
+                    continue;
+                }
+                let t = (el.innerText || "") as string;
+                if (t.indexOf("确认提交") < 0 && t.indexOf("确认") < 0) {
+                    continue;
+                }
+                let hasBtn = false;
+                let inner = el.querySelectorAll("button,a,span,div");
+                for (let j = 0; j < inner.length; j++) {
+                    let b = <HTMLElement>inner[j];
+                    let bt = ((b.innerText || b.textContent || "") as string).trim();
+                    if (wantBtn.test(bt) && bt.indexOf("取消") < 0 && this.isVisible(b)) {
+                        hasBtn = true;
+                        break;
+                    }
+                }
+                if (!hasBtn) {
+                    continue;
+                }
+                if (!dialog || el.getElementsByTagName("*").length < dialog.getElementsByTagName("*").length) {
+                    dialog = el;
+                }
+            }
+        } catch (e) {
+            // ignore
+        }
+        // 2) 在弹窗内找按钮（优先 button 元素）
+        let scope: any = dialog || null;
+        if (!scope) {
+            return null;
+        }
+        let fallback: HTMLElement = null;
+        try {
+            let nodes = scope.querySelectorAll("button,a,span,div");
             for (let i = 0; i < nodes.length; i++) {
                 let el = <HTMLElement>nodes[i];
                 let t = ((el.innerText || el.textContent || "") as string).trim();
-                if (!t || !want.test(t)) {
+                if (!wantBtn.test(t) || t.indexOf("取消") >= 0) {
                     continue;
                 }
                 if (!this.isVisible(el)) {
                     continue;
                 }
-                // 跳过最外层的整页容器（innerText 恰好是这两个字的大 div 不算）
                 if ((el.tagName || "").toUpperCase() == "BUTTON") {
                     return el;
                 }
-                last = el;
+                fallback = el;
             }
         } catch (e) {
             // ignore
         }
-        return last;
+        return fallback;
     }
 
     public Submit(): Promise<any> {
@@ -266,25 +303,37 @@ export class CxCourseTopic extends Topic {
                     } catch (e) {
                         // ignore
                     }
-                    // 等确认框，再点「确定」
-                    self.context.setTimeout(() => {
-                        try {
-                            let confirm = self.findConfirmBtn(doc);
-                            if (confirm) {
-                                Application.App.log.Info("点击确认按钮：" + String((<any>confirm).innerText || ""));
-                                try {
-                                    confirm.click();
-                                } catch (e) {
-                                    // ignore
-                                }
-                            } else {
-                                Application.App.log.Info("没有确认框，可能已直接提交完成");
+                    // 等确认弹窗，最多轮询 6 次（每次 800ms）
+                    let tries = 0;
+                    let clickConfirm = () => {
+                        tries++;
+                        let confirm = self.findConfirmBtn(doc);
+                        if (confirm) {
+                            Application.App.log.Info("点击确认按钮：" + String((<any>confirm).innerText || ""));
+                            try {
+                                confirm.click();
+                            } catch (e) {
+                                // ignore
                             }
-                            resolve(undefined);
-                        } catch (e) {
-                            resolve(undefined);
+                            // 再等一下，看有没有二次确认
+                            self.context.setTimeout(() => {
+                                let again = self.findConfirmBtn(doc);
+                                if (again && again != confirm) {
+                                    again.click();
+                                    Application.App.log.Info("点击二次确认：" + String((<any>again).innerText || ""));
+                                }
+                                resolve(undefined);
+                            }, 1200);
+                            return;
                         }
-                    }, 2500);
+                        if (tries < 6) {
+                            self.context.setTimeout(clickConfirm, 800);
+                            return;
+                        }
+                        Application.App.log.Info("没有确认框，可能已直接提交完成");
+                        resolve(undefined);
+                    };
+                    self.context.setTimeout(clickConfirm, 800);
                 } catch (e) {
                     Application.App.log.Warn("提交失败：" + ((e && e.message) ? e.message : e));
                     resolve(undefined);
