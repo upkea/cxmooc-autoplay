@@ -2286,13 +2286,31 @@ var Hook = /** @class */ (function () {
             name = this.func.name;
         }
         var old = this.context[name];
-        this.context[name] = function () {
+        var wrapped = function () {
             var args = [old];
             for (var _i = 0; _i < arguments.length; _i++) {
                 args[_i + 1] = arguments[_i];
             }
             return call.apply(this, args);
         };
+        // 新版页面可能把目标属性定义成只读（read-only property），直接赋值会抛异常
+        // 而且会把播放器初始化打断；这里能挂上就挂，挂不上就安静跳过。
+        try {
+            this.context[name] = wrapped;
+        }
+        catch (e) {
+            try {
+                Object.defineProperty(this.context, name, { configurable: true, writable: true, value: wrapped });
+            }
+            catch (e2) {
+                try {
+                    application_1.Application.App.log.Warn("Hook 挂载失败（只读属性），已跳过：", name, String(e2 && (e2.message || e2)));
+                }
+                catch (e3) {
+                    // ignore
+                }
+            }
+        }
     };
     Hook.HookAjaxRespond = function (url, call) {
         var _this = this;
