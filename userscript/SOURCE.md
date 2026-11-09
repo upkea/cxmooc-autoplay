@@ -93,6 +93,71 @@ ai_key: "",
 ai_model: "Qwen/Qwen2.5-7B-Instruct",
 ```
 
+### 5. 界面调整：操作按钮移进「小工具通知条」
+
+原版把「开始挂机 / 秒过视频 / 下载资源 / 下载字幕」那排按钮浮在视频上方，会挡住画面。改为放进右上角的「小工具通知条」面板里。
+
+**`src/internal/utils/log.ts`** —— 面板结构里加一个按钮栏容器：
+
+```html
+<div class="head" id="tools-head"> ... </div>
+<div class="tools-btn-bar" id="tools-btn-bar"></div>
+<div class="main">
+   <div class="tools-notice-content"></div>
+</div>
+```
+
+并在面板关闭（点 x）时，把这排按钮挪到一个悬浮小条里，避免「暂停挂机」点不到：
+
+```ts
+(<HTMLButtonElement>this.div.querySelector(".close")).onclick = () => {
+    let bar = <HTMLElement>this.div.querySelector("#tools-btn-bar");
+    if (bar && bar.children.length > 0) {
+        let holder = document.createElement("div");
+        holder.id = "tools-btn-float";
+        holder.style.cssText = "position:fixed;right:16px;top:130px;...";
+        while (bar.firstChild) holder.appendChild(bar.firstChild);
+        document.body.appendChild(holder);
+    }
+    this.el = undefined;
+    this.div.remove();
+};
+```
+
+**`src/mooc/chaoxing/task.ts`** —— `CxTaskControlBar` 构造时优先把按钮挂到 `#tools-btn-bar`，面板还没创建就轮询重试（最多 5 次 × 600ms），找不到再留在原位：
+
+```ts
+constructor(prev: HTMLElement, task: CxTask) {
+    this.task = task;
+    this.prev = document.createElement("div");
+    this.prev.style.cssText = "display:flex;flex-wrap:wrap;gap:4px;justify-content:center;";
+    prev.style.textAlign = "center";
+    prev.style.width = "100%";
+    prev.prepend(this.prev);
+    this.defaultBtn();
+    this.moveToNoticePanel(0);   // 新增
+}
+
+protected moveToNoticePanel(tryCount: number) {
+    let bar = <HTMLElement>document.getElementById("tools-btn-bar");
+    if (bar) {
+        if (this.prev.parentElement != bar) bar.appendChild(this.prev);
+        return;
+    }
+    if (tryCount < 5) setTimeout(() => this.moveToNoticePanel(tryCount + 1), 600);
+}
+```
+
+**`src/views/common.ts`** —— 补按钮栏样式（flex 换行、分隔线、空时不占位）：
+
+```css
+.tools-btn-bar { display:flex; flex-wrap:wrap; gap:4px; padding:6px 4px;
+                 border-top:1px solid #eee; border-bottom:1px solid #eee; box-sizing:border-box; }
+.tools-btn-bar:empty { display:none; }
+.tools-btn-bar .cx-btn { margin:0 !important; }
+```
+
+
 ## 构建
 
 ```bash
