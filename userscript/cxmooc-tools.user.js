@@ -446,7 +446,11 @@ function typeText(type) {
     }
 }
 function BuildAIPrompt(topic, type, options) {
-    var prompt = "你是网课考试助手，请认真作答下面这道题。\n";
+    var prompt = "";
+    // 给弱模型一个格式示例，避免它把推理过程当答案
+    prompt += "【示例】\n";
+    prompt += "题型：单选题\n题目：下列哪一项是哺乳动物？\n选项：\nA. 鲨鱼\nB. 鲸鱼\nC. 鳄鱼\nD. 金鱼\n答案：B\n\n";
+    prompt += "【题目】\n";
     prompt += "题型：" + typeText(type) + "\n";
     prompt += "题目：" + topic + "\n";
     if (options && options.length > 0) {
@@ -456,14 +460,14 @@ function BuildAIPrompt(topic, type, options) {
         }
     }
     prompt += "\n作答要求：\n";
-    prompt += "1. 先在脑子里逐项判断每个选项，不要输出长篇分析；\n";
+    prompt += "1. 先在心里逐项判断每个选项，不要输出长篇分析；\n";
     prompt += "2. 最后单独一行输出最终答案，格式必须是「答案：X」；\n";
     switch (type) {
         case 1:
-            prompt += "3. 单选：X 是一个字母，例如「答案：B」。\n";
+            prompt += "3. 单选：只有一个正确项，X 是一个字母，例如「答案：B」。\n";
             break;
         case 2:
-            prompt += "3. 多选：X 是全部正确项的字母（按字母顺序连写，1~4 个都可能，不要一律全选），例如「答案：ABD」。\n";
+            prompt += "3. 多选：正确项通常 2~4 个，不要一律全选；题目问「哪两种/哪几项」时按题目要求的数量给，例如「答案：ABD」。\n";
             break;
         case 3:
             prompt += "3. 判断：X 是「对」或「错」，例如「答案：对」。\n";
@@ -1052,7 +1056,7 @@ var ToolsQuestionBankFacade = /** @class */ (function () {
     // 用 AI 逐题作答（不经过题库）
     ToolsQuestionBankFacade.prototype.answerWithAI = function (callback) {
         return __awaiter(this, void 0, void 0, function () {
-            var list, i, status, interval, i, q, type, options, title, parts, k, ret, correct, wantTrue, mapped, k, text, isTrue, isFalse, idx, answer, tmp, e3_1, e_1;
+            var list, i, status, interval, i, q, type, options, title, parts, k, ret, r2, r3, voted, e_1, correct, wantTrue, mapped, k, text, isTrue, isFalse, idx, answer, tmp, e3_1, e_2;
             return __generator(this, function (_a) {
                 switch (_a.label) {
                     case 0:
@@ -1072,11 +1076,11 @@ var ToolsQuestionBankFacade = /** @class */ (function () {
                         i = 0;
                         _a.label = 1;
                     case 1:
-                        if (!(i < list.length)) return [3 /*break*/, 15];
+                        if (!(i < list.length)) return [3 /*break*/, 22];
                         q = list[i];
                         _a.label = 2;
                     case 2:
-                        _a.trys.push([2, 11, , 12]);
+                        _a.trys.push([2, 18, , 19]);
                         type = q.GetType();
                         options = [];
                         try {
@@ -1113,16 +1117,38 @@ var ToolsQuestionBankFacade = /** @class */ (function () {
                         return [4 /*yield*/, ai_1.AskAI(title, type, options)];
                     case 3:
                         ret = _a.sent();
-                        if (!(!ret.ok || !ret.correct || ret.correct.length == 0)) return [3 /*break*/, 6];
+                        if (!((type == 1 || type == 2 || type == 3) && ret.ok)) return [3 /*break*/, 10];
+                        _a.label = 4;
+                    case 4:
+                        _a.trys.push([4, 9, , 10]);
+                        return [4 /*yield*/, ai_1.AskAI(title, type, options)];
+                    case 5:
+                        r2 = _a.sent();
+                        if (!this.sameAIResult(ret, r2)) return [3 /*break*/, 6];
+                        application_1.Application.App.log.Info("AI 复核一致");
+                        return [3 /*break*/, 8];
+                    case 6: return [4 /*yield*/, ai_1.AskAI(title, type, options)];
+                    case 7:
+                        r3 = _a.sent();
+                        voted = this.voteAIResults([ret, r2, r3]);
+                        application_1.Application.App.log.Info("AI 两次不一致，三次投票 -> " + this.aiVoteKey(voted));
+                        ret = voted;
+                        _a.label = 8;
+                    case 8: return [3 /*break*/, 10];
+                    case 9:
+                        e_1 = _a.sent();
+                        return [3 /*break*/, 10];
+                    case 10:
+                        if (!(!ret.ok || !ret.correct || ret.correct.length == 0)) return [3 /*break*/, 13];
                         application_1.Application.App.log.Warn("AI 没给出答案：" + (ret.error || "无法解析"));
                         status = this.randAnswer(status, "no_answer", q);
-                        if (!(i < list.length - 1)) return [3 /*break*/, 5];
+                        if (!(i < list.length - 1)) return [3 /*break*/, 12];
                         return [4 /*yield*/, utils_1.Sleep(interval)];
-                    case 4:
+                    case 11:
                         _a.sent();
-                        _a.label = 5;
-                    case 5: return [3 /*break*/, 14];
-                    case 6:
+                        _a.label = 12;
+                    case 12: return [3 /*break*/, 21];
+                    case 13:
                         application_1.Application.App.log.Info("AI 回答：" + String(ret.raw || "").replace(/\s+/g, " ").slice(0, 60));
                         correct = ret.correct;
                         if (type == 3 && options.length > 0) {
@@ -1158,19 +1184,19 @@ var ToolsQuestionBankFacade = /** @class */ (function () {
                         };
                         application_1.Application.App.log.Info("准备勾选：" + JSON.stringify(correct.map(function (v) { return v.option; })));
                         tmp = void 0;
-                        _a.label = 7;
-                    case 7:
-                        _a.trys.push([7, 9, , 10]);
+                        _a.label = 14;
+                    case 14:
+                        _a.trys.push([14, 16, , 17]);
                         return [4 /*yield*/, q.Fill(answer)];
-                    case 8:
+                    case 15:
                         tmp = _a.sent();
-                        return [3 /*break*/, 10];
-                    case 9:
+                        return [3 /*break*/, 17];
+                    case 16:
                         e3_1 = _a.sent();
                         application_1.Application.App.log.Warn("勾选答案失败：" + this.errText(e3_1));
                         tmp = "no_match";
-                        return [3 /*break*/, 10];
-                    case 10:
+                        return [3 /*break*/, 17];
+                    case 17:
                         if (tmp == "ok") {
                             q.SetStatus("ok");
                             application_1.Application.App.log.Info("AI 答案已填写：" + JSON.stringify(correct.map(function (v) { return v.option; })));
@@ -1178,30 +1204,77 @@ var ToolsQuestionBankFacade = /** @class */ (function () {
                         else {
                             status = this.randAnswer(status, tmp, q);
                         }
-                        return [3 /*break*/, 12];
-                    case 11:
-                        e_1 = _a.sent();
-                        application_1.Application.App.log.Warn("AI 答题异常（第 " + (i + 1) + " 题）：" + this.errText(e_1));
+                        return [3 /*break*/, 19];
+                    case 18:
+                        e_2 = _a.sent();
+                        application_1.Application.App.log.Warn("AI 答题异常（第 " + (i + 1) + " 题）：" + this.errText(e_2));
                         try {
                             status = this.randAnswer(status, "no_answer", q);
                         }
                         catch (e2) {
                             status = "incomplete";
                         }
-                        return [3 /*break*/, 12];
-                    case 12:
-                        if (!(i < list.length - 1)) return [3 /*break*/, 14];
+                        return [3 /*break*/, 19];
+                    case 19:
+                        if (!(i < list.length - 1)) return [3 /*break*/, 21];
                         return [4 /*yield*/, utils_1.Sleep(interval)];
-                    case 13:
+                    case 20:
                         _a.sent();
-                        _a.label = 14;
-                    case 14:
+                        _a.label = 21;
+                    case 21:
                         i++;
                         return [3 /*break*/, 1];
-                    case 15: return [2 /*return*/, callback(status)];
+                    case 22: return [2 /*return*/, callback(status)];
                 }
             });
         });
+    };
+    // 把一次 AI 结果压成可比对的字符串（选项按字母排序）
+    ToolsQuestionBankFacade.prototype.aiVoteKey = function (r) {
+        try {
+            if (!r || !r.ok || !r.correct || r.correct.length == 0) {
+                return "";
+            }
+            var keys = new Array();
+            for (var i = 0; i < r.correct.length; i++) {
+                keys.push(String(r.correct[i].option));
+            }
+            keys.sort();
+            return keys.join(",");
+        }
+        catch (e) {
+            return "";
+        }
+    };
+    ToolsQuestionBankFacade.prototype.sameAIResult = function (a, b) {
+        var ka = this.aiVoteKey(a);
+        return ka != "" && ka == this.aiVoteKey(b);
+    };
+    // 多次结果里取出现次数最多的那个（同票取第一次的）
+    ToolsQuestionBankFacade.prototype.voteAIResults = function (list) {
+        try {
+            var map = {};
+            for (var i = 0; i < list.length; i++) {
+                var k = this.aiVoteKey(list[i]);
+                if (k == "") {
+                    continue;
+                }
+                if (!map[k]) {
+                    map[k] = { count: 0, res: list[i] };
+                }
+                map[k].count++;
+            }
+            var best = "";
+            for (var k in map) {
+                if (best == "" || map[k].count > map[best].count) {
+                    best = k;
+                }
+            }
+            return best != "" ? map[best].res : list[0];
+        }
+        catch (e) {
+            return list[0];
+        }
     };
     ToolsQuestionBankFacade.prototype.errText = function (e) {
         try {
@@ -4261,6 +4334,12 @@ var cxSelectQuestion = /** @class */ (function (_super) {
         return _super !== null && _super.apply(this, arguments) || this;
     }
     cxSelectQuestion.prototype.getContent = function (el) {
+        var clean = function (s) {
+            var t = (s || "").replace(/\s+/g, " ").trim();
+            // 去掉内容开头重复的选项字母标记（"A." / "A、" / "A "）
+            t = t.replace(/^[A-Ha-h]\s*[.、．:：)）]\s*/, "").trim();
+            return t;
+        };
         // 选项内容：取最后一个非字母的 <a>（第一个 <a> 通常是选项字母标记）
         var anchors = el.querySelectorAll("a");
         for (var i = anchors.length - 1; i >= 0; i--) {
@@ -4268,21 +4347,22 @@ var cxSelectQuestion = /** @class */ (function (_super) {
             if (t == "" || /^[A-Ha-h]$/.test(t)) {
                 continue;
             }
-            return t;
+            return clean(t);
         }
         var tmpel = el.querySelector("label > input,input");
         if (tmpel == null) {
-            // 没有 input 也没有内容 a：直接用 li 全文（去掉开头字母前缀）
-            return (el.innerText || "").replace(/^\s*[A-Ha-h]\s*[.、]?\s*/, "").trim();
+            // 没有 input 也没有内容 a：直接用 li 全文
+            return clean(el.innerText || "");
         }
         var v = String(tmpel.value || "").toLowerCase();
-        if (v == "true" || v == "1") {
+        // 只有真正的 true/false 才算判断题，数字/字母 value 不能乱映射成对错
+        if (v == "true") {
             return "对√";
         }
-        if (v == "false" || v == "0") {
+        if (v == "false") {
             return "错×";
         }
-        return (el.innerText || "").replace(/^\s*[A-Ha-h]\s*[.、]?\s*/, "").trim();
+        return clean(el.innerText || "");
     };
     cxSelectQuestion.prototype.getOption = function (el) {
         // 优先 input.value（若是字母或 "true"/"false"）
@@ -4509,14 +4589,25 @@ var cxJudgeQuestion = /** @class */ (function (_super) {
         return _super !== null && _super.apply(this, arguments) || this;
     }
     cxJudgeQuestion.prototype.getContent = function (el) {
+        var txt = (el.innerText || el.textContent || "").trim();
         var tmpel = el.querySelector("label > input,input");
-        if (tmpel == null) {
-            return (el.innerText || "").trim();
+        if (tmpel) {
+            var v = String(tmpel.value || "").toLowerCase();
+            if (v == "true") {
+                return "对√";
+            }
+            if (v == "false") {
+                return "错×";
+            }
         }
-        if (tmpel.value == "true") {
+        // 没拿到 true/false 就看选项文字本身
+        if (/错/.test(txt)) {
+            return "错×";
+        }
+        if (/对/.test(txt)) {
             return "对√";
         }
-        return "错×";
+        return txt;
     };
     cxJudgeQuestion.prototype.click = function (el) {
         if (!el) {

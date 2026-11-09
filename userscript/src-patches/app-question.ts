@@ -1,7 +1,7 @@
 import {HttpUtils, removeHTML, randNumber, Sleep} from "../utils/utils";
 import {SystemConfig} from "@App/config";
 import {Application} from "../application";
-import {AIEnabled, AskAI} from "./ai";
+import {AIEnabled, AskAI, AIResult} from "./ai";
 
 export interface Topic {
     topic: string
@@ -397,7 +397,23 @@ export class ToolsQuestionBankFacade implements QuestionBankFacade {
                     // ignore
                 }
 
-                const ret = await AskAI(title, type, options);
+                let ret = await AskAI(title, type, options);
+                // 单选题/多选题/判断题：再问一次做交叉验证；两次不一致就问第三次投票
+                if ((type == 1 || type == 2 || type == 3) && ret.ok) {
+                    try {
+                        let r2 = await AskAI(title, type, options);
+                        if (this.sameAIResult(ret, r2)) {
+                            Application.App.log.Info("AI 复核一致");
+                        } else {
+                            let r3 = await AskAI(title, type, options);
+                            let voted = this.voteAIResults([ret, r2, r3]);
+                            Application.App.log.Info("AI 两次不一致，三次投票 -> " + this.aiVoteKey(voted));
+                            ret = voted;
+                        }
+                    } catch (e) {
+                        // 复核失败就保留第一次的结果
+                    }
+                }
                 if (!ret.ok || !ret.correct || ret.correct.length == 0) {
                     Application.App.log.Warn("AI 没给出答案：" + (ret.error || "无法解析"));
                     status = this.randAnswer(status, "no_answer", q);
@@ -471,6 +487,54 @@ export class ToolsQuestionBankFacade implements QuestionBankFacade {
             }
         }
         return callback(status);
+    }
+
+    // 把一次 AI 结果压成可比对的字符串（选项按字母排序）
+    protected aiVoteKey(r: AIResult): string {
+        try {
+            if (!r || !r.ok || !r.correct || r.correct.length == 0) {
+                return "";
+            }
+            let keys = new Array<string>();
+            for (let i = 0; i < r.correct.length; i++) {
+                keys.push(String(r.correct[i].option));
+            }
+            keys.sort();
+            return keys.join(",");
+        } catch (e) {
+            return "";
+        }
+    }
+
+    protected sameAIResult(a: AIResult, b: AIResult): boolean {
+        let ka = this.aiVoteKey(a);
+        return ka != "" && ka == this.aiVoteKey(b);
+    }
+
+    // 多次结果里取出现次数最多的那个（同票取第一次的）
+    protected voteAIResults(list: AIResult[]): AIResult {
+        try {
+            let map: { [k: string]: { count: number, res: AIResult } } = {};
+            for (let i = 0; i < list.length; i++) {
+                let k = this.aiVoteKey(list[i]);
+                if (k == "") {
+                    continue;
+                }
+                if (!map[k]) {
+                    map[k] = {count: 0, res: list[i]};
+                }
+                map[k].count++;
+            }
+            let best = "";
+            for (let k in map) {
+                if (best == "" || map[k].count > map[best].count) {
+                    best = k;
+                }
+            }
+            return best != "" ? map[best].res : list[0];
+        } catch (e) {
+            return list[0];
+        }
     }
 
     protected errText(e: any): string {

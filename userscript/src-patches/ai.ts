@@ -58,7 +58,11 @@ function typeText(type: TopicType): string {
 }
 
 export function BuildAIPrompt(topic: string, type: TopicType, options: Option[]): string {
-    let prompt = "你是网课考试助手，请认真作答下面这道题。\n";
+    let prompt = "";
+    // 给弱模型一个格式示例，避免它把推理过程当答案
+    prompt += "【示例】\n";
+    prompt += "题型：单选题\n题目：下列哪一项是哺乳动物？\n选项：\nA. 鲨鱼\nB. 鲸鱼\nC. 鳄鱼\nD. 金鱼\n答案：B\n\n";
+    prompt += "【题目】\n";
     prompt += "题型：" + typeText(type) + "\n";
     prompt += "题目：" + topic + "\n";
     if (options && options.length > 0) {
@@ -68,14 +72,14 @@ export function BuildAIPrompt(topic: string, type: TopicType, options: Option[])
         }
     }
     prompt += "\n作答要求：\n";
-    prompt += "1. 先在脑子里逐项判断每个选项，不要输出长篇分析；\n";
+    prompt += "1. 先在心里逐项判断每个选项，不要输出长篇分析；\n";
     prompt += "2. 最后单独一行输出最终答案，格式必须是「答案：X」；\n";
     switch (type) {
         case 1:
-            prompt += "3. 单选：X 是一个字母，例如「答案：B」。\n";
+            prompt += "3. 单选：只有一个正确项，X 是一个字母，例如「答案：B」。\n";
             break;
         case 2:
-            prompt += "3. 多选：X 是全部正确项的字母（按字母顺序连写，1~4 个都可能，不要一律全选），例如「答案：ABD」。\n";
+            prompt += "3. 多选：正确项通常 2~4 个，不要一律全选；题目问「哪两种/哪几项」时按题目要求的数量给，例如「答案：ABD」。\n";
             break;
         case 3:
             prompt += "3. 判断：X 是「对」或「错」，例如「答案：对」。\n";

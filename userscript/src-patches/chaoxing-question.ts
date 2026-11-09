@@ -280,6 +280,12 @@ abstract class cxQuestion implements Question {
 class cxSelectQuestion extends cxQuestion implements Question {
 
     protected getContent(el: HTMLElement): string {
+        let clean = (s: string): string => {
+            let t = (s || "").replace(/\s+/g, " ").trim();
+            // 去掉内容开头重复的选项字母标记（"A." / "A、" / "A "）
+            t = t.replace(/^[A-Ha-h]\s*[.、．:：)）]\s*/, "").trim();
+            return t;
+        };
         // 选项内容：取最后一个非字母的 <a>（第一个 <a> 通常是选项字母标记）
         let anchors = el.querySelectorAll("a");
         for (let i = anchors.length - 1; i >= 0; i--) {
@@ -287,21 +293,22 @@ class cxSelectQuestion extends cxQuestion implements Question {
             if (t == "" || /^[A-Ha-h]$/.test(t)) {
                 continue;
             }
-            return t;
+            return clean(t);
         }
         let tmpel = <HTMLInputElement>el.querySelector("label > input,input");
         if (tmpel == null) {
-            // 没有 input 也没有内容 a：直接用 li 全文（去掉开头字母前缀）
-            return (el.innerText || "").replace(/^\s*[A-Ha-h]\s*[.、]?\s*/, "").trim();
+            // 没有 input 也没有内容 a：直接用 li 全文
+            return clean(el.innerText || "");
         }
         let v = String(tmpel.value || "").toLowerCase();
-        if (v == "true" || v == "1") {
+        // 只有真正的 true/false 才算判断题，数字/字母 value 不能乱映射成对错
+        if (v == "true") {
             return "对√";
         }
-        if (v == "false" || v == "0") {
+        if (v == "false") {
             return "错×";
         }
-        return (el.innerText || "").replace(/^\s*[A-Ha-h]\s*[.、]?\s*/, "").trim();
+        return clean(el.innerText || "");
     }
 
     protected getOption(el: HTMLElement): string {
@@ -520,14 +527,25 @@ class cxSelectQuestion extends cxQuestion implements Question {
 class cxJudgeQuestion extends cxSelectQuestion implements Question {
 
     protected getContent(el: HTMLElement): string {
+        let txt = ((el.innerText || el.textContent || "") as string).trim();
         let tmpel = <HTMLInputElement>el.querySelector("label > input,input");
-        if (tmpel == null) {
-            return (el.innerText || "").trim();
+        if (tmpel) {
+            let v = String(tmpel.value || "").toLowerCase();
+            if (v == "true") {
+                return "对√";
+            }
+            if (v == "false") {
+                return "错×";
+            }
         }
-        if (tmpel.value == "true") {
+        // 没拿到 true/false 就看选项文字本身
+        if (/错/.test(txt)) {
+            return "错×";
+        }
+        if (/对/.test(txt)) {
             return "对√";
         }
-        return "错×";
+        return txt;
     }
 
     protected click(el: HTMLElement) {
