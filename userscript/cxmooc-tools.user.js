@@ -398,7 +398,7 @@ var __generator = (this && this.__generator) || function (thisArg, body) {
     }
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.TestAIConnection = exports.AskAI = exports.ParseAIAnswer = exports.BuildAIPrompt = exports.AskAIVision = exports.ShowVisionPreview = exports.CaptureQuestionImage = exports.VisionConfig = exports.VisionEnabled = exports.AIEnabled = exports.AIConfig = void 0;
+exports.TestAIConnection = exports.AskAI = exports.ParseAIAnswer = exports.BuildAIPrompt = exports.AskAIVision = exports.ShowVisionPreview = exports.ReasonFromText = exports.VisionOCR = exports.CaptureQuestionImage = exports.VisionConfig = exports.VisionEnabled = exports.AIEnabled = exports.AIConfig = void 0;
 var application_1 = __webpack_require__(/*! ../application */ "./src/internal/application.ts");
 var utils_1 = __webpack_require__(/*! ../utils/utils */ "./src/internal/utils/utils.ts");
 function cfg(key, def) {
@@ -514,6 +514,204 @@ function CaptureQuestionImage(el) {
     });
 }
 exports.CaptureQuestionImage = CaptureQuestionImage;
+// 视觉转录：把题图转成文字（不作答）
+function VisionOCR(imageDataUrl) {
+    return AskAIVision(imageDataUrl, "这是一张学习通章节测验的页面截图，题目和选项位于截图中部（页面顶部/侧边是其他界面元素，请忽略）。" +
+        "请把当前这道题目及其所有选项的完整文字逐字转录出来（包括题型标题、题干、A/B/C/D 选项内容）。" +
+        "只输出转录的文字，不要作答，不要解释。");
+}
+exports.VisionOCR = VisionOCR;
+// 文本推理：拿到干净题目文字后，用强文本模型解题并投票
+function ReasonFromText(questionText, typeName, validLetters, votes) {
+    var _this = this;
+    var conf = AIConfig();
+    var reasonModel = cfg("ai_reason_model", "glm-4-plus");
+    var models = [];
+    var pushModel = function (m) {
+        if (m && models.indexOf(m) < 0) {
+            models.push(m);
+        }
+    };
+    pushModel(reasonModel);
+    pushModel("glm-4-plus");
+    pushModel("glm-4-air");
+    pushModel(conf.model);
+    var lettersHint = validLetters.join("/");
+    var prompt = "下面是一道中文" + typeName + "的题目（文字由图片转写而来，可能有极个别错字，请按上下文理解）：\n\n" +
+        String(questionText || "").slice(0, 3000) + "\n\n" +
+        "请先在内心分析每个选项，判断正确答案。最后单独一行输出：答案：X" +
+        (validLetters.length <= 2 ? "（只输出一个字母）" : "（多选输出多个字母，如 答案：ABD；单选只输出一个字母）") +
+        "。答案字母只能是 " + lettersHint + " 之一。除了最后一行，不要输出其他内容。";
+    return new Promise(function (resolve) {
+        var allVotes = [];
+        var idx = 0;
+        var usedModel = "";
+        var lastErr = "";
+        var parseLetters = function (txt) {
+            var out = [];
+            var push = function (mm) {
+                for (var i = 0; i < mm.length; i++) {
+                    if (validLetters.indexOf(mm[i]) >= 0 && out.indexOf(mm[i]) < 0) {
+                        out.push(mm[i]);
+                    }
+                }
+            };
+            var m = txt.match(/答案\s*[:：]?\s*([A-Ha-h][A-Ha-h\s,，、]*)/);
+            if (m && m[1]) {
+                push(m[1].toUpperCase().match(/[A-H]/g) || []);
+            }
+            if (out.length == 0) {
+                var lines = txt.split(/\r?\n/).map(function (s) { return s.trim(); }).filter(function (s) { return s.length > 0; });
+                var last = lines.length > 0 ? lines[lines.length - 1] : txt;
+                push(String(last).toUpperCase().match(/[A-H]/g) || []);
+            }
+            return out;
+        };
+        var ask = function (model) {
+            var body = JSON.stringify({
+                model: model,
+                temperature: votes > 1 ? 0.8 : 0,
+                max_tokens: 400,
+                messages: [{ role: "user", content: prompt }],
+            });
+            return new Promise(function (res) {
+                try {
+                    var gx = window.GM_xmlhttpRequest;
+                    if (typeof gx == "function") {
+                        gx({
+                            method: "POST",
+                            url: conf.base + "/chat/completions",
+                            headers: { "Content-Type": "application/json", "Authorization": "Bearer " + conf.key },
+                            data: body,
+                            timeout: 45000,
+                            onload: function (resp) {
+                                try {
+                                    var j = JSON.parse(resp.responseText);
+                                    if (j && j.error) {
+                                        res({ ok: false, error: String(j.error.message || "") });
+                                        return;
+                                    }
+                                    var c = (j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || "";
+                                    res(c ? { ok: true, text: String(c) } : { ok: false, error: "空回复" });
+                                }
+                                catch (e) {
+                                    res({ ok: false, error: "解析失败 HTTP " + resp.status });
+                                }
+                            },
+                            onerror: function () { return res({ ok: false, error: "网络错误" }); },
+                            ontimeout: function () { return res({ ok: false, error: "超时" }); },
+                        });
+                        return;
+                    }
+                    fetch(conf.base + "/chat/completions", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + conf.key },
+                        body: body,
+                    }).then(function (r) { return __awaiter(_this, void 0, void 0, function () {
+                        var t, j, c;
+                        return __generator(this, function (_a) {
+                            switch (_a.label) {
+                                case 0: return [4 /*yield*/, r.text()];
+                                case 1:
+                                    t = _a.sent();
+                                    try {
+                                        j = JSON.parse(t);
+                                        if (j && j.error) {
+                                            res({ ok: false, error: String(j.error.message || "") });
+                                            return [2 /*return*/];
+                                        }
+                                        c = (j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || "";
+                                        res(c ? { ok: true, text: String(c) } : { ok: false, error: "空回复" });
+                                    }
+                                    catch (e) {
+                                        res({ ok: false, error: "解析失败" });
+                                    }
+                                    return [2 /*return*/];
+                            }
+                        });
+                    }); }).catch(function () { return res({ ok: false, error: "网络错误" }); });
+                }
+                catch (e) {
+                    res({ ok: false, error: String(e) });
+                }
+            });
+        };
+        var step = function () { return __awaiter(_this, void 0, void 0, function () {
+            var letters, li, cnt, vi, tally, vi, k, best, bestCnt, k, voteLog, model, r, ls;
+            return __generator(this, function (_a) {
+                switch (_a.label) {
+                    case 0:
+                        if (allVotes.length >= votes || idx >= models.length * votes) {
+                            letters = [];
+                            if (allVotes.length > 0) {
+                                if (validLetters.length > 2) {
+                                    // 多选
+                                    for (li = 0; li < validLetters.length; li++) {
+                                        cnt = 0;
+                                        for (vi = 0; vi < allVotes.length; vi++) {
+                                            if (allVotes[vi].indexOf(validLetters[li]) >= 0) {
+                                                cnt++;
+                                            }
+                                        }
+                                        if (cnt * 2 >= allVotes.length && cnt > 0) {
+                                            letters.push(validLetters[li]);
+                                        }
+                                    }
+                                }
+                                else {
+                                    tally = {};
+                                    for (vi = 0; vi < allVotes.length; vi++) {
+                                        k = allVotes[vi][0];
+                                        tally[k] = (tally[k] || 0) + 1;
+                                    }
+                                    best = "";
+                                    bestCnt = 0;
+                                    for (k in tally) {
+                                        if (tally[k] > bestCnt) {
+                                            best = k;
+                                            bestCnt = tally[k];
+                                        }
+                                    }
+                                    if (best) {
+                                        letters = [best];
+                                    }
+                                }
+                            }
+                            voteLog = allVotes.map(function (v) { return v.join(""); }).join(",");
+                            resolve({ ok: letters.length > 0, letters: letters, raw: voteLog, model: usedModel, error: letters.length > 0 ? undefined : lastErr });
+                            return [2 /*return*/];
+                        }
+                        model = models[Math.min(idx % models.length, models.length - 1)];
+                        return [4 /*yield*/, ask(model)];
+                    case 1:
+                        r = _a.sent();
+                        if (r.ok && r.text) {
+                            usedModel = model;
+                            ls = parseLetters(r.text);
+                            if (ls.length > 0) {
+                                allVotes.push(ls);
+                            }
+                            else {
+                                lastErr = "无有效字母";
+                            }
+                        }
+                        else {
+                            lastErr = r.error || "失败";
+                        }
+                        idx++;
+                        step();
+                        return [2 /*return*/];
+                }
+            });
+        }); };
+        if (!conf.key) {
+            resolve({ ok: false, letters: [], error: "未配置 ai_key" });
+            return;
+        }
+        step();
+    });
+}
+exports.ReasonFromText = ReasonFromText;
 // ===== 题图预览小窗：把发给视觉模型的截图浮在页面右上角，方便用户核对 =====
 var previewState = null;
 var previewDrag = null;
@@ -1473,14 +1671,14 @@ var ToolsQuestionBankFacade = /** @class */ (function () {
                         status = "success";
                         interval = application_1.Application.App.config.topic_interval * 1000;
                         _loop_1 = function (i) {
-                            var q, type_1, options, title, parts, k, ret, el, img, typeName, validLetters_1, oi, lo, parseLetters, votes, usedModel, votesWanted, vv, prompt1, v, vr, ls, letters, visionRaw, bestLog, li, cnt, vi, tally, vi, key, best, bestCnt, k, first, vr2, e_1, r2, r3, voted, e_2, rate, wrong, correct, wantTrue, mapped, k, text, isTrue, isFalse, idx, answer, tmp, e3_1, e_3;
+                            var q, type_1, options, title, parts, k, ret, el, img, typeName, validLetters_1, oi, lo, parseLetters, votes, usedModel, votesWanted, vv, letters, visionRaw, bestLog, ocrText, ocrModel, ocr, rr, e_1, vr2, e_2, r2, r3, voted, e_3, rate, wrong, correct, wantTrue, mapped, k, text, isTrue, isFalse, idx, answer, tmp, e3_1, e_4;
                             return __generator(this, function (_a) {
                                 switch (_a.label) {
                                     case 0:
                                         q = list[i];
                                         _a.label = 1;
                                     case 1:
-                                        _a.trys.push([1, 29, , 30]);
+                                        _a.trys.push([1, 32, , 33]);
                                         type_1 = q.GetType();
                                         options = [];
                                         try {
@@ -1524,10 +1722,10 @@ var ToolsQuestionBankFacade = /** @class */ (function () {
                                             // ignore
                                         }
                                         ret = null;
-                                        if (!ai_1.VisionEnabled()) return [3 /*break*/, 12];
+                                        if (!ai_1.VisionEnabled()) return [3 /*break*/, 15];
                                         _a.label = 2;
                                     case 2:
-                                        _a.trys.push([2, 11, , 12]);
+                                        _a.trys.push([2, 14, , 15]);
                                         el = null;
                                         try {
                                             el = q.GetElement ? q.GetElement() : null;
@@ -1535,11 +1733,11 @@ var ToolsQuestionBankFacade = /** @class */ (function () {
                                         catch (e) {
                                             el = null;
                                         }
-                                        if (!el) return [3 /*break*/, 10];
+                                        if (!el) return [3 /*break*/, 13];
                                         return [4 /*yield*/, ai_1.CaptureQuestionImage(el)];
                                     case 3:
                                         img = _a.sent();
-                                        if (!img) return [3 /*break*/, 10];
+                                        if (!img) return [3 /*break*/, 13];
                                         ai_1.ShowVisionPreview(img, "读题中…");
                                         typeName = type_1 == 1 ? "单选题" : (type_1 == 2 ? "多选题" : (type_1 == 3 ? "判断题" : "填空题"));
                                         validLetters_1 = [];
@@ -1585,87 +1783,57 @@ var ToolsQuestionBankFacade = /** @class */ (function () {
                                             }
                                         }
                                         catch (e) { /* ignore */ }
-                                        prompt1 = "这是一张学习通章节测验页面的整页截图，当前题目和它的选项位于截图中部（页面顶部或侧边可能有其他界面元素，请忽略）。请找到这道中文" + typeName + "的题干和选项，" +
-                                            "请仔细阅读图片中的题干和所有选项，先在内心分析每个选项是否正确，再给出答案。" +
-                                            "最后单独一行输出：答案：X" +
-                                            (type_1 == 3 ? "（A 表示对，B 表示错，只输出一个字母）" : (type_1 == 2 ? "（多选输出多个字母，如 答案：ABD）" : "（单选题只输出一个字母）")) +
-                                            "。选项字母只能是 " + validLetters_1.join("/") + " 之一。除了最后一行，不要输出其他内容。";
-                                        v = 0;
-                                        _a.label = 4;
-                                    case 4:
-                                        if (!(v < votesWanted)) return [3 /*break*/, 7];
-                                        return [4 /*yield*/, ai_1.AskAIVision(img, prompt1)];
-                                    case 5:
-                                        vr = _a.sent();
-                                        if (vr.ok && vr.text) {
-                                            usedModel = vr.model || usedModel;
-                                            ls = parseLetters(String(vr.text));
-                                            if (ls.length > 0) {
-                                                votes.push(ls);
-                                            }
-                                        }
-                                        _a.label = 6;
-                                    case 6:
-                                        v++;
-                                        return [3 /*break*/, 4];
-                                    case 7:
                                         letters = [];
                                         visionRaw = "";
                                         bestLog = "";
-                                        if (votes.length > 0 && type_1 == 2) {
-                                            // 多选：字母出现 >= 半数票 才算
-                                            for (li = 0; li < validLetters_1.length; li++) {
-                                                cnt = 0;
-                                                for (vi = 0; vi < votes.length; vi++) {
-                                                    if (votes[vi].indexOf(validLetters_1[li]) >= 0) {
-                                                        cnt++;
-                                                    }
-                                                }
-                                                if (cnt * 2 >= votes.length && cnt > 0) {
-                                                    letters.push(validLetters_1[li]);
-                                                }
-                                            }
-                                            bestLog = votes.map(function (v) { return v.join(""); }).join(",");
+                                        ocrText = "";
+                                        ocrModel = "";
+                                        _a.label = 4;
+                                    case 4:
+                                        _a.trys.push([4, 9, , 10]);
+                                        return [4 /*yield*/, ai_1.VisionOCR(img)];
+                                    case 5:
+                                        ocr = _a.sent();
+                                        if (!(ocr.ok && ocr.text && String(ocr.text).trim().length >= 8)) return [3 /*break*/, 7];
+                                        ocrText = String(ocr.text).trim();
+                                        ocrModel = ocr.model || "";
+                                        application_1.Application.App.log.Info("视觉转录（" + ocrModel + "）：" + ocrText.replace(/\s+/g, " ").slice(0, 60));
+                                        ai_1.ShowVisionPreview(img, "转录完成，文本模型解题中…");
+                                        return [4 /*yield*/, ai_1.ReasonFromText(ocrText, typeName, validLetters_1, votesWanted)];
+                                    case 6:
+                                        rr = _a.sent();
+                                        if (rr.ok && rr.letters.length > 0) {
+                                            letters = rr.letters;
+                                            bestLog = (rr.raw || letters.join("")) + " => " + letters.join("") + "（" + (rr.model || "") + "）";
                                         }
-                                        else if (votes.length > 0) {
-                                            tally = {};
-                                            for (vi = 0; vi < votes.length; vi++) {
-                                                key = votes[vi][0];
-                                                tally[key] = (tally[key] || 0) + 1;
-                                            }
-                                            best = "";
-                                            bestCnt = 0;
-                                            for (k in tally) {
-                                                if (tally[k] > bestCnt || (tally[k] == bestCnt && best == "")) {
-                                                    best = k;
-                                                    bestCnt = tally[k];
-                                                }
-                                            }
-                                            if (best) {
-                                                letters = [best];
-                                                if (bestCnt <= 1 && votes.length > 1) {
-                                                    first = votes[0][0];
-                                                    if (tally[first] === undefined) {
-                                                        letters = [first];
-                                                    }
-                                                }
-                                            }
-                                            bestLog = votes.map(function (v) { return v.join(""); }).join(",") + " => " + best + "(" + bestCnt + "/" + votes.length + ")";
+                                        else if (rr.error) {
+                                            application_1.Application.App.log.Warn("文本模型解题失败：" + rr.error);
                                         }
-                                        if (!(letters.length == 0 && votes.length == 0)) return [3 /*break*/, 9];
+                                        return [3 /*break*/, 8];
+                                    case 7:
+                                        if (ocr.error) {
+                                            application_1.Application.App.log.Warn("视觉转录失败：" + ocr.error);
+                                        }
+                                        _a.label = 8;
+                                    case 8: return [3 /*break*/, 10];
+                                    case 9:
+                                        e_1 = _a.sent();
+                                        return [3 /*break*/, 10];
+                                    case 10:
+                                        if (!(letters.length == 0)) return [3 /*break*/, 12];
                                         return [4 /*yield*/, ai_1.AskAIVision(img, "看图回答：" + typeName + "，只输出正确选项的字母（" + validLetters_1.join("/") + "），不要任何解释。")];
-                                    case 8:
+                                    case 11:
                                         vr2 = _a.sent();
                                         if (vr2.ok && vr2.text) {
                                             visionRaw = String(vr2.text);
                                             letters = parseLetters(visionRaw);
                                             usedModel = vr2.model || usedModel;
                                         }
-                                        _a.label = 9;
-                                    case 9:
+                                        _a.label = 12;
+                                    case 12:
                                         if (letters.length > 0) {
-                                            application_1.Application.App.log.Info("视觉读题答案：" + letters.join("") + "（模型 " + usedModel + "，投票 " + (bestLog || letters.join("")) + "）");
-                                            ai_1.ShowVisionPreview(img, "AI 答案：" + letters.join("") + "（" + usedModel + "·" + (bestLog || letters.join("")) + "）");
+                                            application_1.Application.App.log.Info("视觉读题答案：" + letters.join("") + "（投票 " + (bestLog || letters.join("")) + "）");
+                                            ai_1.ShowVisionPreview(img, "AI 答案：" + letters.join("") + "（" + (bestLog || letters.join("")) + "）");
                                             if (type_1 == 3) {
                                                 // 判断题：A=对(true) B=错(false)，后续统一转换逻辑会映射到题目自己的选项值
                                                 ret = { ok: true, correct: [{ option: (letters[0] == "A"), content: "" }], raw: "vision:" + letters.join(""), vision: true };
@@ -1677,40 +1845,40 @@ var ToolsQuestionBankFacade = /** @class */ (function () {
                                         else {
                                             application_1.Application.App.log.Warn("视觉读题未给出有效选项（" + String(visionRaw || "").replace(/\s+/g, " ").slice(0, 40) + "）回退文字模式");
                                         }
-                                        _a.label = 10;
-                                    case 10: return [3 /*break*/, 12];
-                                    case 11:
-                                        e_1 = _a.sent();
-                                        return [3 /*break*/, 12];
-                                    case 12:
-                                        if (!(!ret || !ret.ok)) return [3 /*break*/, 14];
-                                        return [4 /*yield*/, ai_1.AskAI(title, type_1, options)];
-                                    case 13:
-                                        ret = _a.sent();
-                                        _a.label = 14;
+                                        _a.label = 13;
+                                    case 13: return [3 /*break*/, 15];
                                     case 14:
-                                        if (!(!ret.vision && (type_1 == 1 || type_1 == 2 || type_1 == 3) && ret.ok)) return [3 /*break*/, 21];
-                                        _a.label = 15;
+                                        e_2 = _a.sent();
+                                        return [3 /*break*/, 15];
                                     case 15:
-                                        _a.trys.push([15, 20, , 21]);
+                                        if (!(!ret || !ret.ok)) return [3 /*break*/, 17];
                                         return [4 /*yield*/, ai_1.AskAI(title, type_1, options)];
                                     case 16:
-                                        r2 = _a.sent();
-                                        if (!this_1.sameAIResult(ret, r2)) return [3 /*break*/, 17];
-                                        application_1.Application.App.log.Info("AI 复核一致");
-                                        return [3 /*break*/, 19];
-                                    case 17: return [4 /*yield*/, ai_1.AskAI(title, type_1, options)];
+                                        ret = _a.sent();
+                                        _a.label = 17;
+                                    case 17:
+                                        if (!(!ret.vision && (type_1 == 1 || type_1 == 2 || type_1 == 3) && ret.ok)) return [3 /*break*/, 24];
+                                        _a.label = 18;
                                     case 18:
+                                        _a.trys.push([18, 23, , 24]);
+                                        return [4 /*yield*/, ai_1.AskAI(title, type_1, options)];
+                                    case 19:
+                                        r2 = _a.sent();
+                                        if (!this_1.sameAIResult(ret, r2)) return [3 /*break*/, 20];
+                                        application_1.Application.App.log.Info("AI 复核一致");
+                                        return [3 /*break*/, 22];
+                                    case 20: return [4 /*yield*/, ai_1.AskAI(title, type_1, options)];
+                                    case 21:
                                         r3 = _a.sent();
                                         voted = this_1.voteAIResults([ret, r2, r3]);
                                         application_1.Application.App.log.Info("AI 两次不一致，三次投票 -> " + this_1.aiVoteKey(voted));
                                         ret = voted;
-                                        _a.label = 19;
-                                    case 19: return [3 /*break*/, 21];
-                                    case 20:
-                                        e_2 = _a.sent();
-                                        return [3 /*break*/, 21];
-                                    case 21:
+                                        _a.label = 22;
+                                    case 22: return [3 /*break*/, 24];
+                                    case 23:
+                                        e_3 = _a.sent();
+                                        return [3 /*break*/, 24];
+                                    case 24:
                                         // 拟人化：故意答错率（wrong_rate，百分比，默认 0 = 永远答对；只对单选/判断生效）
                                         if (ret.ok && (type_1 == 1 || type_1 == 3)) {
                                             try {
@@ -1727,16 +1895,16 @@ var ToolsQuestionBankFacade = /** @class */ (function () {
                                                 // ignore
                                             }
                                         }
-                                        if (!(!ret.ok || !ret.correct || ret.correct.length == 0)) return [3 /*break*/, 24];
+                                        if (!(!ret.ok || !ret.correct || ret.correct.length == 0)) return [3 /*break*/, 27];
                                         application_1.Application.App.log.Warn("AI 没给出答案：" + (ret.error || "无法解析"));
                                         status = this_1.randAnswer(status, "no_answer", q);
-                                        if (!(i < list.length - 1)) return [3 /*break*/, 23];
+                                        if (!(i < list.length - 1)) return [3 /*break*/, 26];
                                         return [4 /*yield*/, this_1.aiSleep(interval)];
-                                    case 22:
+                                    case 25:
                                         _a.sent();
-                                        _a.label = 23;
-                                    case 23: return [2 /*return*/, "continue"];
-                                    case 24:
+                                        _a.label = 26;
+                                    case 26: return [2 /*return*/, "continue"];
+                                    case 27:
                                         application_1.Application.App.log.Info("AI 回答：" + String(ret.raw || "").replace(/\s+/g, " ").slice(0, 60));
                                         correct = ret.correct;
                                         if (type_1 == 3 && options.length > 0) {
@@ -1772,19 +1940,19 @@ var ToolsQuestionBankFacade = /** @class */ (function () {
                                         };
                                         application_1.Application.App.log.Info("准备勾选：" + JSON.stringify(correct.map(function (v) { return v.option; })));
                                         tmp = void 0;
-                                        _a.label = 25;
-                                    case 25:
-                                        _a.trys.push([25, 27, , 28]);
+                                        _a.label = 28;
+                                    case 28:
+                                        _a.trys.push([28, 30, , 31]);
                                         return [4 /*yield*/, q.Fill(answer)];
-                                    case 26:
+                                    case 29:
                                         tmp = _a.sent();
-                                        return [3 /*break*/, 28];
-                                    case 27:
+                                        return [3 /*break*/, 31];
+                                    case 30:
                                         e3_1 = _a.sent();
                                         application_1.Application.App.log.Warn("勾选答案失败：" + this_1.errText(e3_1));
                                         tmp = "no_match";
-                                        return [3 /*break*/, 28];
-                                    case 28:
+                                        return [3 /*break*/, 31];
+                                    case 31:
                                         if (tmp == "ok") {
                                             q.SetStatus("ok");
                                             application_1.Application.App.log.Info("AI 答案已填写：" + JSON.stringify(correct.map(function (v) { return v.option; })));
@@ -1792,24 +1960,24 @@ var ToolsQuestionBankFacade = /** @class */ (function () {
                                         else {
                                             status = this_1.randAnswer(status, tmp, q);
                                         }
-                                        return [3 /*break*/, 30];
-                                    case 29:
-                                        e_3 = _a.sent();
-                                        application_1.Application.App.log.Warn("AI 答题异常（第 " + (i + 1) + " 题）：" + this_1.errText(e_3));
+                                        return [3 /*break*/, 33];
+                                    case 32:
+                                        e_4 = _a.sent();
+                                        application_1.Application.App.log.Warn("AI 答题异常（第 " + (i + 1) + " 题）：" + this_1.errText(e_4));
                                         try {
                                             status = this_1.randAnswer(status, "no_answer", q);
                                         }
                                         catch (e2) {
                                             status = "incomplete";
                                         }
-                                        return [3 /*break*/, 30];
-                                    case 30:
-                                        if (!(i < list.length - 1)) return [3 /*break*/, 32];
+                                        return [3 /*break*/, 33];
+                                    case 33:
+                                        if (!(i < list.length - 1)) return [3 /*break*/, 35];
                                         return [4 /*yield*/, this_1.aiSleep(interval)];
-                                    case 31:
+                                    case 34:
                                         _a.sent();
-                                        _a.label = 32;
-                                    case 32: return [2 /*return*/];
+                                        _a.label = 35;
+                                    case 35: return [2 /*return*/];
                                 }
                             });
                         };
@@ -1833,7 +2001,7 @@ var ToolsQuestionBankFacade = /** @class */ (function () {
     // 拟人化：每题之间在 topic_interval 基础上加 0~3 秒随机延迟
     ToolsQuestionBankFacade.prototype.aiSleep = function (interval) {
         return __awaiter(this, void 0, Promise, function () {
-            var r, extra, e_4;
+            var r, extra, e_5;
             return __generator(this, function (_a) {
                 switch (_a.label) {
                     case 0:
@@ -1845,7 +2013,7 @@ var ToolsQuestionBankFacade = /** @class */ (function () {
                         _a.sent();
                         return [3 /*break*/, 4];
                     case 2:
-                        e_4 = _a.sent();
+                        e_5 = _a.sent();
                         return [4 /*yield*/, utils_1.Sleep(interval)];
                     case 3:
                         _a.sent();

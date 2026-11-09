@@ -1,7 +1,7 @@
 import {HttpUtils, removeHTML, randNumber, Sleep} from "../utils/utils";
 import {SystemConfig} from "@App/config";
 import {Application} from "../application";
-import {AIEnabled, AskAI, AIResult, VisionEnabled, VisionConfig, CaptureQuestionImage, AskAIVision, ShowVisionPreview} from "./ai";
+import {AIEnabled, AskAI, AIResult, VisionEnabled, VisionConfig, CaptureQuestionImage, AskAIVision, ShowVisionPreview, VisionOCR, ReasonFromText} from "./ai";
 
 export interface Topic {
     topic: string
@@ -555,70 +555,38 @@ export class ToolsQuestionBankFacade implements QuestionBankFacade {
                                         votesWanted = vv;
                                     }
                                 } catch (e) { /* ignore */ }
-                                let prompt1 =
-                                    "这是一张学习通章节测验页面的整页截图，当前题目和它的选项位于截图中部（页面顶部或侧边可能有其他界面元素，请忽略）。请找到这道中文" + typeName + "的题干和选项，" +
-                                    "请仔细阅读图片中的题干和所有选项，先在内心分析每个选项是否正确，再给出答案。" +
-                                    "最后单独一行输出：答案：X" +
-                                    (type == 3 ? "（A 表示对，B 表示错，只输出一个字母）" : (type == 2 ? "（多选输出多个字母，如 答案：ABD）" : "（单选题只输出一个字母）")) +
-                                    "。选项字母只能是 " + validLetters.join("/") + " 之一。除了最后一行，不要输出其他内容。";
-                                for (let v = 0; v < votesWanted; v++) {
-                                    let vr = await AskAIVision(img, prompt1);
-                                    if (vr.ok && vr.text) {
-                                        usedModel = vr.model || usedModel;
-                                        let ls = parseLetters(String(vr.text));
-                                        if (ls.length > 0) {
-                                            votes.push(ls);
-                                        }
-                                    }
-                                }
-                                // 投票结果
+                                // ===== 两段式：视觉 OCR 转录 → 强文本模型解题（多次投票）=====
                                 let letters: string[] = [];
                                 let visionRaw = "";
                                 let bestLog = "";
-                                if (votes.length > 0 && type == 2) {
-                                    // 多选：字母出现 >= 半数票 才算
-                                    for (let li = 0; li < validLetters.length; li++) {
-                                        let cnt = 0;
-                                        for (let vi = 0; vi < votes.length; vi++) {
-                                            if (votes[vi].indexOf(validLetters[li]) >= 0) {
-                                                cnt++;
-                                            }
+                                let ocrText = "";
+                                let ocrModel = "";
+                                try {
+                                    let ocr = await VisionOCR(img);
+                                    if (ocr.ok && ocr.text && String(ocr.text).trim().length >= 8) {
+                                        ocrText = String(ocr.text).trim();
+                                        ocrModel = ocr.model || "";
+                                        Application.App.log.Info("视觉转录（" + ocrModel + "）：" + ocrText.replace(/\s+/g, " ").slice(0, 60));
+                                        ShowVisionPreview(img, "转录完成，文本模型解题中…");
+                                        let rr = await ReasonFromText(ocrText, typeName, validLetters, votesWanted);
+                                        if (rr.ok && rr.letters.length > 0) {
+                                            letters = rr.letters;
+                                            bestLog = (rr.raw || letters.join("")) + " => " + letters.join("") + "（" + (rr.model || "") + "）";
+                                        } else if (rr.error) {
+                                            Application.App.log.Warn("文本模型解题失败：" + rr.error);
                                         }
-                                        if (cnt * 2 >= votes.length && cnt > 0) {
-                                            letters.push(validLetters[li]);
-                                        }
+                                    } else if (ocr.error) {
+                                        Application.App.log.Warn("视觉转录失败：" + ocr.error);
                                     }
-                                    bestLog = votes.map((v) => v.join("")).join(",");
-                                } else if (votes.length > 0) {
-                                    // 单选/判断：票数最多者，平票取第一票的
-                                    let tally: { [k: string]: number } = {};
-                                    for (let vi = 0; vi < votes.length; vi++) {
-                                        let key = votes[vi][0];
-                                        tally[key] = (tally[key] || 0) + 1;
-                                    }
-                                    let best = "";
-                                    let bestCnt = 0;
-                                    for (let k in tally) {
-                                        if (tally[k] > bestCnt || (tally[k] == bestCnt && best == "")) {
-                                            best = k;
-                                            bestCnt = tally[k];
-                                        }
-                                    }
-                                    if (best) {
-                                        letters = [best];
-                                        if (bestCnt <= 1 && votes.length > 1) {
-                                            // 3 票全不齐怎么办：取投票第一票
-                                            let first = votes[0][0];
-                                            if (tally[first] === undefined) {
-                                                letters = [first];
-                                            }
-                                        }
-                                    }
-                                    bestLog = votes.map((v) => v.join("")).join(",") + " => " + best + "(" + bestCnt + "/" + votes.length + ")";
+                                } catch (e) {
+                                    // ignore
                                 }
-                                if (letters.length == 0 && votes.length == 0) {
-                                    // 一次极简重试
-                                    let vr2 = await AskAIVision(img, "看图回答：" + typeName + "，只输出正确选项的字母（" + validLetters.join("/") + "），不要任何解释。");
+                                // 兜底：直接让视觉模型作答
+                                if (letters.length == 0) {
+                                    let vr2 = await AskAIVision(
+                                        img,
+                                        "看图回答：" + typeName + "，只输出正确选项的字母（" + validLetters.join("/") + "），不要任何解释。"
+                                    );
                                     if (vr2.ok && vr2.text) {
                                         visionRaw = String(vr2.text);
                                         letters = parseLetters(visionRaw);
@@ -626,8 +594,8 @@ export class ToolsQuestionBankFacade implements QuestionBankFacade {
                                     }
                                 }
                                 if (letters.length > 0) {
-                                    Application.App.log.Info("视觉读题答案：" + letters.join("") + "（模型 " + usedModel + "，投票 " + (bestLog || letters.join("")) + "）");
-                                    ShowVisionPreview(img, "AI 答案：" + letters.join("") + "（" + usedModel + "·" + (bestLog || letters.join("")) + "）");
+                                    Application.App.log.Info("视觉读题答案：" + letters.join("") + "（投票 " + (bestLog || letters.join("")) + "）");
+                                    ShowVisionPreview(img, "AI 答案：" + letters.join("") + "（" + (bestLog || letters.join("")) + "）");
                                     if (type == 3) {
                                         // 判断题：A=对(true) B=错(false)，后续统一转换逻辑会映射到题目自己的选项值
                                         ret = {ok: true, correct: [{option: <any>(letters[0] == "A"), content: ""}], raw: "vision:" + letters.join(""), vision: true};

@@ -121,11 +121,200 @@ export function CaptureQuestionImage(el: HTMLElement): Promise<string> {
     });
 }
 
+// ===== 两段式答题：视觉只负责 OCR 转录，文本模型负责解题 =====
 export interface VisionResult {
     ok: boolean;
     text?: string;
     error?: string;
     model?: string;
+}
+
+export interface ReasonResult {
+    ok: boolean;
+    letters: string[];
+    raw?: string;
+    error?: string;
+    model?: string;
+}
+
+// 视觉转录：把题图转成文字（不作答）
+export function VisionOCR(imageDataUrl: string): Promise<{ ok: boolean; text?: string; error?: string; model?: string }> {
+    return AskAIVision(
+        imageDataUrl,
+        "这是一张学习通章节测验的页面截图，题目和选项位于截图中部（页面顶部/侧边是其他界面元素，请忽略）。" +
+        "请把当前这道题目及其所有选项的完整文字逐字转录出来（包括题型标题、题干、A/B/C/D 选项内容）。" +
+        "只输出转录的文字，不要作答，不要解释。"
+    );
+}
+
+// 文本推理：拿到干净题目文字后，用强文本模型解题并投票
+export function ReasonFromText(questionText: string, typeName: string, validLetters: string[], votes: number): Promise<ReasonResult> {
+    const conf = AIConfig();
+    const reasonModel = cfg("ai_reason_model", "glm-4-plus");
+    const models: string[] = [];
+    const pushModel = (m: string) => {
+        if (m && models.indexOf(m) < 0) {
+            models.push(m);
+        }
+    };
+    pushModel(reasonModel);
+    pushModel("glm-4-plus");
+    pushModel("glm-4-air");
+    pushModel(conf.model);
+    const lettersHint = validLetters.join("/");
+    const prompt =
+        "下面是一道中文" + typeName + "的题目（文字由图片转写而来，可能有极个别错字，请按上下文理解）：\n\n" +
+        String(questionText || "").slice(0, 3000) + "\n\n" +
+        "请先在内心分析每个选项，判断正确答案。最后单独一行输出：答案：X" +
+        (validLetters.length <= 2 ? "（只输出一个字母）" : "（多选输出多个字母，如 答案：ABD；单选只输出一个字母）") +
+        "。答案字母只能是 " + lettersHint + " 之一。除了最后一行，不要输出其他内容。";
+    return new Promise<ReasonResult>((resolve) => {
+        const allVotes: string[][] = [];
+        let idx = 0;
+        let usedModel = "";
+        let lastErr = "";
+        const parseLetters = (txt: string): string[] => {
+            let out: string[] = [];
+            let push = (mm: string[]) => {
+                for (let i = 0; i < mm.length; i++) {
+                    if (validLetters.indexOf(mm[i]) >= 0 && out.indexOf(mm[i]) < 0) {
+                        out.push(mm[i]);
+                    }
+                }
+            };
+            let m = txt.match(/答案\s*[:：]?\s*([A-Ha-h][A-Ha-h\s,，、]*)/);
+            if (m && m[1]) {
+                push(m[1].toUpperCase().match(/[A-H]/g) || []);
+            }
+            if (out.length == 0) {
+                let lines = txt.split(/\r?\n/).map((s) => s.trim()).filter((s) => s.length > 0);
+                let last = lines.length > 0 ? lines[lines.length - 1] : txt;
+                push(String(last).toUpperCase().match(/[A-H]/g) || []);
+            }
+            return out;
+        };
+        const ask = (model: string): Promise<{ ok: boolean; text?: string; error?: string }> => {
+            const body = JSON.stringify({
+                model: model,
+                temperature: votes > 1 ? 0.8 : 0,
+                max_tokens: 400,
+                messages: [{ role: "user", content: prompt }],
+            });
+            return new Promise((res) => {
+                try {
+                    let gx = (<any>window).GM_xmlhttpRequest;
+                    if (typeof gx == "function") {
+                        gx({
+                            method: "POST",
+                            url: conf.base + "/chat/completions",
+                            headers: {"Content-Type": "application/json", "Authorization": "Bearer " + conf.key},
+                            data: body,
+                            timeout: 45000,
+                            onload: (resp: any) => {
+                                try {
+                                    const j = JSON.parse(resp.responseText);
+                                    if (j && j.error) {
+                                        res({ ok: false, error: String(j.error.message || "") });
+                                        return;
+                                    }
+                                    const c = (j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || "";
+                                    res(c ? { ok: true, text: String(c) } : { ok: false, error: "空回复" });
+                                } catch (e) {
+                                    res({ ok: false, error: "解析失败 HTTP " + resp.status });
+                                }
+                            },
+                            onerror: () => res({ ok: false, error: "网络错误" }),
+                            ontimeout: () => res({ ok: false, error: "超时" }),
+                        });
+                        return;
+                    }
+                    fetch(conf.base + "/chat/completions", {
+                        method: "POST",
+                        headers: {"Content-Type": "application/json", "Authorization": "Bearer " + conf.key},
+                        body: body,
+                    }).then(async (r) => {
+                        const t = await r.text();
+                        try {
+                            const j = JSON.parse(t);
+                            if (j && j.error) {
+                                res({ ok: false, error: String(j.error.message || "") });
+                                return;
+                            }
+                            const c = (j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || "";
+                            res(c ? { ok: true, text: String(c) } : { ok: false, error: "空回复" });
+                        } catch (e) {
+                            res({ ok: false, error: "解析失败" });
+                        }
+                    }).catch(() => res({ ok: false, error: "网络错误" }));
+                } catch (e) {
+                    res({ ok: false, error: String(e) });
+                }
+            });
+        };
+        const step = async () => {
+            if (allVotes.length >= votes || idx >= models.length * votes) {
+                // 统计
+                let letters: string[] = [];
+                if (allVotes.length > 0) {
+                    if (validLetters.length > 2) {
+                        // 多选
+                        for (let li = 0; li < validLetters.length; li++) {
+                            let cnt = 0;
+                            for (let vi = 0; vi < allVotes.length; vi++) {
+                                if (allVotes[vi].indexOf(validLetters[li]) >= 0) {
+                                    cnt++;
+                                }
+                            }
+                            if (cnt * 2 >= allVotes.length && cnt > 0) {
+                                letters.push(validLetters[li]);
+                            }
+                        }
+                    } else {
+                        // 单选/判断
+                        let tally: { [k: string]: number } = {};
+                        for (let vi = 0; vi < allVotes.length; vi++) {
+                            let k = allVotes[vi][0];
+                            tally[k] = (tally[k] || 0) + 1;
+                        }
+                        let best = "";
+                        let bestCnt = 0;
+                        for (let k in tally) {
+                            if (tally[k] > bestCnt) {
+                                best = k;
+                                bestCnt = tally[k];
+                            }
+                        }
+                        if (best) {
+                            letters = [best];
+                        }
+                    }
+                }
+                let voteLog = allVotes.map((v) => v.join("")).join(",");
+                resolve({ ok: letters.length > 0, letters: letters, raw: voteLog, model: usedModel, error: letters.length > 0 ? undefined : lastErr });
+                return;
+            }
+            const model = models[Math.min(idx % models.length, models.length - 1)];
+            const r = await ask(model);
+            if (r.ok && r.text) {
+                usedModel = model;
+                let ls = parseLetters(r.text);
+                if (ls.length > 0) {
+                    allVotes.push(ls);
+                } else {
+                    lastErr = "无有效字母";
+                }
+            } else {
+                lastErr = r.error || "失败";
+            }
+            idx++;
+            step();
+        };
+        if (!conf.key) {
+            resolve({ok: false, letters: [], error: "未配置 ai_key"});
+            return;
+        }
+        step();
+    });
 }
 
 // ===== 题图预览小窗：把发给视觉模型的截图浮在页面右上角，方便用户核对 =====
