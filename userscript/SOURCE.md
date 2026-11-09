@@ -124,13 +124,14 @@ ai_model: "Qwen/Qwen2.5-7B-Instruct",
 };
 ```
 
-**`src/mooc/chaoxing/task.ts`** —— `CxTaskControlBar` 构造时优先把按钮挂到 `#tools-btn-bar`，面板还没创建就轮询重试（最多 5 次 × 600ms），找不到再留在原位：
+**`src/mooc/chaoxing/task.ts`** —— `CxTaskControlBar` 构造时优先把按钮挂到 `#tools-btn-bar`，面板还没创建就轮询重试（最多 5 次 × 600ms），找不到再留在原位。同时给每组按钮打上任务点标记 `data-cx-key`，同一任务点重复创建时先删掉旧的那组：
 
 ```ts
 constructor(prev: HTMLElement, task: CxTask) {
     this.task = task;
     this.prev = document.createElement("div");
     this.prev.style.cssText = "display:flex;flex-wrap:wrap;gap:4px;justify-content:center;";
+    this.prev.setAttribute("data-cx-key", CxTaskControlBar.taskKey(task));
     prev.style.textAlign = "center";
     prev.style.width = "100%";
     prev.prepend(this.prev);
@@ -138,13 +139,34 @@ constructor(prev: HTMLElement, task: CxTask) {
     this.moveToNoticePanel(0);   // 新增
 }
 
+// 任务点唯一标识，用于识别"同一个任务点被创建了两次"
+protected static taskKey(task: CxTask): string {
+    let prop: any = task && (<any>task).taskinfo && (<any>task).taskinfo.property;
+    return prop ? String(prop.objectid || prop.jobid || prop.mid || "") : "";
+}
+
 protected moveToNoticePanel(tryCount: number) {
     let bar = <HTMLElement>document.getElementById("tools-btn-bar");
     if (bar) {
+        let key = this.prev.getAttribute("data-cx-key");
+        let olds = bar.querySelectorAll("[data-cx-key='" + key + "']");
+        for (let i = 0; i < olds.length; i++) {
+            if (olds[i] != this.prev) (<HTMLElement>olds[i]).remove();
+        }
         if (this.prev.parentElement != bar) bar.appendChild(this.prev);
         return;
     }
     if (tryCount < 5) setTimeout(() => this.moveToNoticePanel(tryCount + 1), 600);
+}
+```
+
+**`src/mooc/chaoxing/course.ts`** —— 每加载一批新任务点（切换章节/任务）时，先清空通知条里的按钮组，否则旧任务的按钮会一直堆在面板里，切几次就变成好几排：
+
+```ts
+// OperateCard() 里，重建 taskList 之前
+let btnBar = <HTMLElement>document.getElementById("tools-btn-bar");
+if (btnBar) {
+    while (btnBar.firstChild) btnBar.removeChild(btnBar.firstChild);
 }
 ```
 

@@ -2953,7 +2953,7 @@ var CxCourse = /** @class */ (function (_super) {
     // 操作任务卡,一个页面会包含很多任务,取出来
     CxCourse.prototype.OperateCard = function (iframe) {
         return __awaiter(this, void 0, void 0, function () {
-            var iframeWindow, match, _loop_1, this_1, index;
+            var iframeWindow, match, btnBar, _loop_1, this_1, index;
             var _this = this;
             return __generator(this, function (_a) {
                 switch (_a.label) {
@@ -2970,6 +2970,12 @@ var CxCourse = /** @class */ (function (_super) {
                         // 任务的属性
                         this.attachments = iframeWindow.mArg.attachments;
                         this.taskList = new Array();
+                        btnBar = document.getElementById("tools-btn-bar");
+                        if (btnBar) {
+                            while (btnBar.firstChild) {
+                                btnBar.removeChild(btnBar.firstChild);
+                            }
+                        }
                         _loop_1 = function (index) {
                             var value, task;
                             return __generator(this, function (_a) {
@@ -4257,6 +4263,8 @@ var CxTaskControlBar = /** @class */ (function () {
         this.task = task;
         this.prev = document.createElement("div");
         this.prev.style.cssText = "display:flex;flex-wrap:wrap;gap:4px;justify-content:center;";
+        // 给按钮组打个任务点标记，同一任务点重复创建时据此去重
+        this.prev.setAttribute("data-cx-key", CxTaskControlBar.taskKey(task));
         prev.style.textAlign = "center";
         prev.style.width = "100%";
         prev.prepend(this.prev);
@@ -4264,10 +4272,27 @@ var CxTaskControlBar = /** @class */ (function () {
         // 优先把按钮挪进「小工具通知条」，别挡住视频；面板还没创建就稍后重试
         this.moveToNoticePanel(0);
     }
+    // 任务点唯一标识，用于识别"同一个任务点被创建了两次"
+    CxTaskControlBar.taskKey = function (task) {
+        var info = task && task.taskinfo;
+        var prop = info && info.property;
+        if (!prop) {
+            return "";
+        }
+        return String(prop.objectid || prop.jobid || prop.mid || "");
+    };
     CxTaskControlBar.prototype.moveToNoticePanel = function (tryCount) {
         var _this = this;
         var bar = document.getElementById("tools-btn-bar");
         if (bar) {
+            // 同一任务点被重复创建（页面多次 load）时，先清掉旧的那一组，避免叠出两排按钮
+            var key = this.prev.getAttribute("data-cx-key");
+            var olds = bar.querySelectorAll("[data-cx-key='" + key + "']");
+            for (var i = 0; i < olds.length; i++) {
+                if (olds[i] != this.prev) {
+                    olds[i].remove();
+                }
+            }
             if (this.prev.parentElement != bar) {
                 bar.appendChild(this.prev);
             }

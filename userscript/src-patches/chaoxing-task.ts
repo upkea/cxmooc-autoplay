@@ -61,6 +61,8 @@ export class CxTaskControlBar {
         this.task = task;
         this.prev = document.createElement("div");
         this.prev.style.cssText = "display:flex;flex-wrap:wrap;gap:4px;justify-content:center;";
+        // 给按钮组打个任务点标记，同一任务点重复创建时据此去重
+        this.prev.setAttribute("data-cx-key", CxTaskControlBar.taskKey(task));
         prev.style.textAlign = "center";
         prev.style.width = "100%";
         prev.prepend(this.prev);
@@ -69,9 +71,27 @@ export class CxTaskControlBar {
         this.moveToNoticePanel(0);
     }
 
+    // 任务点唯一标识，用于识别"同一个任务点被创建了两次"
+    protected static taskKey(task: CxTask): string {
+        let info: any = task && (<any>task).taskinfo;
+        let prop: any = info && info.property;
+        if (!prop) {
+            return "";
+        }
+        return String(prop.objectid || prop.jobid || prop.mid || "");
+    }
+
     protected moveToNoticePanel(tryCount: number) {
         let bar = <HTMLElement>document.getElementById("tools-btn-bar");
         if (bar) {
+            // 同一任务点被重复创建（页面多次 load）时，先清掉旧的那一组，避免叠出两排按钮
+            let key = this.prev.getAttribute("data-cx-key");
+            let olds = bar.querySelectorAll("[data-cx-key='" + key + "']");
+            for (let i = 0; i < olds.length; i++) {
+                if (olds[i] != this.prev) {
+                    (<HTMLElement>olds[i]).remove();
+                }
+            }
             if (this.prev.parentElement != bar) {
                 bar.appendChild(this.prev);
             }
