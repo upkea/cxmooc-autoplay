@@ -515,7 +515,7 @@ function CaptureQuestionImage(el) {
                 resolve(null);
                 return;
             }
-            w.cxCapture({ rect: rect })
+            w.cxCapture(rect)
                 .then(function (res) { return resolve(res && res.dataUrl ? res.dataUrl : null); })
                 .catch(function () { return resolve(null); });
         }

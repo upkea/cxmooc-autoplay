@@ -123,7 +123,7 @@ export function CaptureQuestionImage(el: HTMLElement): Promise<string> {
                 resolve(null);
                 return;
             }
-            w.cxCapture({rect: rect})
+            w.cxCapture(rect)
                 .then((res: any) => resolve(res && res.dataUrl ? res.dataUrl : null))
                 .catch(() => resolve(null));
         } catch (e) {
