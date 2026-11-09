@@ -180,42 +180,46 @@ export function AskAI(topic: string, type: TopicType, options: Option[]): Promis
                 {role: "user", content: BuildAIPrompt(topic, type, options)},
             ],
         });
-        HttpUtils.HttpPost(conf.base + "/chat/completions", body, {
-            headers: {
-                "Content-Type": "application/json",
-                "Authorization": "Bearer " + conf.key,
-            },
-            json: true,
-            success: (res: any) => {
-                try {
-                    let content = "";
-                    if (res && res.choices && res.choices.length > 0) {
-                        if (res.choices[0].message) {
-                            content = res.choices[0].message.content || "";
-                        } else if (res.choices[0].text) {
-                            content = res.choices[0].text;
+        try {
+            HttpUtils.HttpPost(conf.base + "/chat/completions", body, {
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": "Bearer " + conf.key,
+                },
+                json: true,
+                success: (res: any) => {
+                    try {
+                        let content = "";
+                        if (res && res.choices && res.choices.length > 0) {
+                            if (res.choices[0].message) {
+                                content = res.choices[0].message.content || "";
+                            } else if (res.choices[0].text) {
+                                content = res.choices[0].text;
+                            }
                         }
+                        if (!content && typeof res == "string") {
+                            content = res;
+                        }
+                        if (!content) {
+                            return resolve({ok: false, correct: null, error: "AI 返回为空", raw: JSON.stringify(res)});
+                        }
+                        const correct = ParseAIAnswer(content, type, options);
+                        Application.App.log.Debug("AI 原始回复", content);
+                        if (!correct) {
+                            return resolve({ok: false, correct: null, raw: content, error: "无法解析 AI 回复"});
+                        }
+                        return resolve({ok: true, correct: correct, raw: content});
+                    } catch (e) {
+                        return resolve({ok: false, correct: null, error: String(e)});
                     }
-                    if (!content && typeof res == "string") {
-                        content = res;
-                    }
-                    if (!content) {
-                        return resolve({ok: false, correct: null, error: "AI 返回为空", raw: JSON.stringify(res)});
-                    }
-                    const correct = ParseAIAnswer(content, type, options);
-                    Application.App.log.Debug("AI 原始回复", content);
-                    if (!correct) {
-                        return resolve({ok: false, correct: null, raw: content, error: "无法解析 AI 回复"});
-                    }
-                    return resolve({ok: true, correct: correct, raw: content});
-                } catch (e) {
-                    return resolve({ok: false, correct: null, error: String(e)});
-                }
-            },
-            error: () => {
-                return resolve({ok: false, correct: null, error: "网络请求失败（检查 ai_base / 网络 / 代理）"});
-            },
-        });
+                },
+                error: () => {
+                    return resolve({ok: false, correct: null, error: "网络请求失败（检查 ai_base / 网络 / 代理）"});
+                },
+            });
+        } catch (e) {
+            return resolve({ok: false, correct: null, error: "请求发不出去：" + ((e && e.message) ? e.message : e)});
+        }
     });
 }
 

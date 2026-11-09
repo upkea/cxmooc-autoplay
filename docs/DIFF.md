@@ -13,20 +13,22 @@ README 里说过本项目是「基于原版的增强包」，这里把**到底�
 
 ## 代码统计
 
-对原始 master 源码树做全量比对：**13 个文件改动，+1281 行 / -49 行**（删除的都是被重写的旧实现，没有删功能）。
+对原始 master 源码树做全量比对：**15 个文件改动，+1361 行 / -54 行**（删除的都是被重写的旧实现，没有删功能）。
 
 | 文件 | 类型 | 行数 |
 |---|---|---|
-| `src/internal/app/ai.ts` | 🆕 新增 | +300 |
+| `src/internal/app/ai.ts` | 🆕 新增 | +304 |
 | `src/internal/utils/log.ts` | 修改 | +253 |
-| `src/mooc/chaoxing/question.ts` | 修改 | +172 / -29 |
+| `src/mooc/chaoxing/question.ts` | 修改 | +193 / -30 |
 | `src/tampermonkey/continue-watch.ts` | 🆕 新增 | +161 |
 | `src/views/common.ts` | 修改 | +150 / -11 |
-| `src/internal/app/question.ts` | 修改 | +120 |
-| `src/mooc/chaoxing/task.ts` | 修改 | +40 |
+| `src/internal/app/question.ts` | 修改 | +149 |
+| `src/mooc/chaoxing/task.ts` | 修改 | +43 |
 | `src/internal/app/topic.ts` | 修改 | +27 / -9 |
+| `src/internal/utils/utils.ts` | 修改 | +18 / -4 |
 | `src/mooc/chaoxing/course.ts` | 修改 | +7 |
 | `src/tampermonkey/cxmooc-pack.ts` | 修改 | +6 |
+| `src/mooc/chaoxing/topic.ts` | 修改 | +5 |
 | `src/tampermonkey/{cxmooc,zhihuishu,course163}.js` | 修改 | +15 ×3 |
 
 > 完整的改动源码见 [`userscript/src-patches/`](src-patches/)；每处改动的上下文说明见 [`userscript/SOURCE.md`](SOURCE.md)。

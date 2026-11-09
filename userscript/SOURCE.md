@@ -385,11 +385,46 @@ catch (e) { Application.App.log.Warn("AI 答题异常（第 N 题）：" + e); }
 ### 追加修复：判断题的 Fill 用错字段 + 通知条显示 bug
 
 1. **判断题 `Fill()` 读的是 `content` 布尔值**：原版是给题库用的，`answer.correct[0].content` 是 `true/false`；AI 路径里我们传的是 `{option: "true"/"false", content: ""}`，于是永远走 `options[1]`（错）。现在改成先看 `content`，再看 `option`，最后按「对/正确/√」与「错/错误/×」去匹配真实选项。
-2. **页面脚本在 `click()` 里抛错会带崩整题**：把 `input.click()` 和 `AddNotice()` 都包了 try/catch，页面自己的报错不影响我们继续。
+2. **页面脚本在 `click()` 里抛错会带崩整题**：把 `input.click()` 和 `AddNotice()` 都包了 try/catch；点完还会检查 `input.checked`，没选上就绕过页面 click、直接 `checked = true` + 派发 `change`。
 3. **通知条看起来"花了"**：面板背景原来是 `rgba(255,255,255,0.3)`（70% 透明），底下的课程页面文字透上来，像叠在一起；日志行固定 26px 高 + `text-align:center`，长日志会被裁掉、错位。
    - 面板背景改成 `rgba(255,255,255,0.98)`，悬停 `#fff`
    - 日志行改自动高度、左对齐、12px/18px、`white-space: pre-wrap; word-break: break-word`
    - 状态文字加 `max-width` + 省略号，不再把行撑破
+
+### 追加修复：`window.hasOwnProperty` 触发超星 Proxy 异常（AI 请求发不出去）
+
+带堆栈的日志显示：
+
+```
+AI 答题异常（第 3 题）：TypeError: Invalid property descriptor...
+  at Proxy.hasOwnProperty ()
+  at .../src/internal/utils/utils.ts.HttpUtils.crossDomainRequest
+```
+
+根因在 `HttpUtils.crossDomainRequest()` 的第一行：
+
+```ts
+if (window.hasOwnProperty('GM_xmlhttpRequest')) {   // ← 超星某些页面把 window 套了 Proxy，这里直接抛
+```
+
+改成 `typeof` 判断，并且读属性本身也包 try/catch：
+
+```ts
+let gx: any = null;
+try { gx = (<any>window).GM_xmlhttpRequest; } catch (e) { gx = null; }
+if (typeof gx == "function") { ... gx(info); }
+```
+
+同样的 `window.hasOwnProperty("GM_notification")`（`Noifications`）也一并改成 `typeof`。
+
+> 这也是「AI 连接测试显示已连接、但答题时全都没答案」的原因：连接测试直接用 `window.GM_xmlhttpRequest` 不走 `hasOwnProperty`，而答题走 `HttpUtils`。
+
+配套改动：
+
+- `AskAI()` 里 `HttpUtils.HttpPost` 外面再包一层 try/catch，请求发不出去也会 resolve 成错误提示，不再抛出中断整题。
+- AI 开启时不再显示「搜索题目」按钮（`CxTopicControlBar.defaultBtn()` 里 `if (AIEnabled()) return;`），那是走原题库的入口。
+- AI 模式下没答案时，题目下面不再显示原题库文案「题库中没有搜索到答案」，改成「AI 没有给出答案」。
+- 任务按钮组如果一直找不到通知条（例如在 iframe 里），会隐藏而不是浮在页面中间；同一任务点的旧按钮组会全局删除。
 
 ## 构建
 

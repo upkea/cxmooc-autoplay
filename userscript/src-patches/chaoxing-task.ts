@@ -86,9 +86,9 @@ export class CxTaskControlBar {
         let bar = <HTMLElement>document.getElementById("tools-btn-bar") ||
             <HTMLElement>document.getElementById("tools-btn-float");
         if (bar) {
-            // 同一任务点被重复创建（页面多次 load）时，先清掉旧的那一组，避免叠出两排按钮
+            // 同一任务点的旧按钮组（可能还留在页面别处）也一起清掉，避免页面上浮出一排
             let key = this.prev.getAttribute("data-cx-key");
-            let olds = bar.querySelectorAll("[data-cx-key='" + key + "']");
+            let olds = document.querySelectorAll("[data-cx-key='" + key + "']");
             for (let i = 0; i < olds.length; i++) {
                 if (olds[i] != this.prev) {
                     (<HTMLElement>olds[i]).remove();
@@ -99,10 +99,13 @@ export class CxTaskControlBar {
             }
             return;
         }
-        if (tryCount < 5) {
+        if (tryCount < 20) {
             setTimeout(() => {
                 this.moveToNoticePanel(tryCount + 1);
-            }, 600);
+            }, 500);
+        } else {
+            // 一直找不到面板（比如在 iframe 里）：藏起来，别浮在页面中间
+            this.prev.style.display = "none";
         }
     }
 

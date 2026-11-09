@@ -479,6 +479,16 @@ export class ToolsQuestionBankFacade implements QuestionBankFacade {
         if (tmpStatus == "no_support_random") {
             status = "incomplete";
         }
+        // AI 模式下别显示「题库中没有搜索到答案」，那是原题库的文案
+        try {
+            let q: any = question;
+            if (tmpStatus == "no_answer" && AIEnabled() && typeof q.AddNotice == "function") {
+                q.AddNotice("AI 没有给出答案");
+                return status;
+            }
+        } catch (e) {
+            // ignore
+        }
         question.SetStatus(tmpStatus);
         return status;
     }

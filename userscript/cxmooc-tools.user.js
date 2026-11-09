@@ -564,44 +564,49 @@ function AskAI(topic, type, options) {
                 { role: "user", content: BuildAIPrompt(topic, type, options) },
             ],
         });
-        utils_1.HttpUtils.HttpPost(conf.base + "/chat/completions", body, {
-            headers: {
-                "Content-Type": "application/json",
-                "Authorization": "Bearer " + conf.key,
-            },
-            json: true,
-            success: function (res) {
-                try {
-                    var content = "";
-                    if (res && res.choices && res.choices.length > 0) {
-                        if (res.choices[0].message) {
-                            content = res.choices[0].message.content || "";
+        try {
+            utils_1.HttpUtils.HttpPost(conf.base + "/chat/completions", body, {
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": "Bearer " + conf.key,
+                },
+                json: true,
+                success: function (res) {
+                    try {
+                        var content = "";
+                        if (res && res.choices && res.choices.length > 0) {
+                            if (res.choices[0].message) {
+                                content = res.choices[0].message.content || "";
+                            }
+                            else if (res.choices[0].text) {
+                                content = res.choices[0].text;
+                            }
                         }
-                        else if (res.choices[0].text) {
-                            content = res.choices[0].text;
+                        if (!content && typeof res == "string") {
+                            content = res;
                         }
+                        if (!content) {
+                            return resolve({ ok: false, correct: null, error: "AI 返回为空", raw: JSON.stringify(res) });
+                        }
+                        var correct = ParseAIAnswer(content, type, options);
+                        application_1.Application.App.log.Debug("AI 原始回复", content);
+                        if (!correct) {
+                            return resolve({ ok: false, correct: null, raw: content, error: "无法解析 AI 回复" });
+                        }
+                        return resolve({ ok: true, correct: correct, raw: content });
                     }
-                    if (!content && typeof res == "string") {
-                        content = res;
+                    catch (e) {
+                        return resolve({ ok: false, correct: null, error: String(e) });
                     }
-                    if (!content) {
-                        return resolve({ ok: false, correct: null, error: "AI 返回为空", raw: JSON.stringify(res) });
-                    }
-                    var correct = ParseAIAnswer(content, type, options);
-                    application_1.Application.App.log.Debug("AI 原始回复", content);
-                    if (!correct) {
-                        return resolve({ ok: false, correct: null, raw: content, error: "无法解析 AI 回复" });
-                    }
-                    return resolve({ ok: true, correct: correct, raw: content });
-                }
-                catch (e) {
-                    return resolve({ ok: false, correct: null, error: String(e) });
-                }
-            },
-            error: function () {
-                return resolve({ ok: false, correct: null, error: "网络请求失败（检查 ai_base / 网络 / 代理）" });
-            },
-        });
+                },
+                error: function () {
+                    return resolve({ ok: false, correct: null, error: "网络请求失败（检查 ai_base / 网络 / 代理）" });
+                },
+            });
+        }
+        catch (e) {
+            return resolve({ ok: false, correct: null, error: "请求发不出去：" + ((e && e.message) ? e.message : e) });
+        }
     });
 }
 exports.AskAI = AskAI;
@@ -1170,6 +1175,17 @@ var ToolsQuestionBankFacade = /** @class */ (function () {
         }
         if (tmpStatus == "no_support_random") {
             status = "incomplete";
+        }
+        // AI 模式下别显示「题库中没有搜索到答案」，那是原题库的文案
+        try {
+            var q = question;
+            if (tmpStatus == "no_answer" && ai_1.AIEnabled() && typeof q.AddNotice == "function") {
+                q.AddNotice("AI 没有给出答案");
+                return status;
+            }
+        }
+        catch (e) {
+            // ignore
         }
         question.SetStatus(tmpStatus);
         return status;
@@ -2933,7 +2949,16 @@ var HttpUtils = /** @class */ (function () {
         return true;
     };
     HttpUtils.crossDomainRequest = function (info) {
-        if (window.hasOwnProperty('GM_xmlhttpRequest')) {
+        // 超星某些页面会给 window 套 Proxy，hasOwnProperty 会直接抛
+        // "Invalid property descriptor"；改用 typeof 判断最安全
+        var gx = null;
+        try {
+            gx = window.GM_xmlhttpRequest;
+        }
+        catch (e) {
+            gx = null;
+        }
+        if (typeof gx == "function") {
             //兼容油猴
             info.data = info.body;
             info.onreadystatechange = function (response) {
@@ -2956,7 +2981,7 @@ var HttpUtils = /** @class */ (function () {
                     }
                 }
             };
-            window.GM_xmlhttpRequest(info);
+            gx(info);
         }
         else {
             var client = application_1.Application.App.Client;
@@ -3263,8 +3288,15 @@ function isPhone() {
 }
 exports.isPhone = isPhone;
 function Noifications(details) {
-    if (window.hasOwnProperty("GM_notification")) {
-        window.GM_notification(details);
+    var gn = null;
+    try {
+        gn = window.GM_notification;
+    }
+    catch (e) {
+        gn = null;
+    }
+    if (typeof gn == "function") {
+        gn(details);
     }
     else {
         var client = application_1.Application.App.Client;
@@ -4918,9 +4950,9 @@ var CxTaskControlBar = /** @class */ (function () {
         var bar = document.getElementById("tools-btn-bar") ||
             document.getElementById("tools-btn-float");
         if (bar) {
-            // 同一任务点被重复创建（页面多次 load）时，先清掉旧的那一组，避免叠出两排按钮
+            // 同一任务点的旧按钮组（可能还留在页面别处）也一起清掉，避免页面上浮出一排
             var key = this.prev.getAttribute("data-cx-key");
-            var olds = bar.querySelectorAll("[data-cx-key='" + key + "']");
+            var olds = document.querySelectorAll("[data-cx-key='" + key + "']");
             for (var i = 0; i < olds.length; i++) {
                 if (olds[i] != this.prev) {
                     olds[i].remove();
@@ -4931,10 +4963,14 @@ var CxTaskControlBar = /** @class */ (function () {
             }
             return;
         }
-        if (tryCount < 5) {
+        if (tryCount < 20) {
             setTimeout(function () {
                 _this.moveToNoticePanel(tryCount + 1);
-            }, 600);
+            }, 500);
+        }
+        else {
+            // 一直找不到面板（比如在 iframe 里）：藏起来，别浮在页面中间
+            this.prev.style.display = "none";
         }
     };
     CxTaskControlBar.prototype.defaultBtn = function () {
@@ -5052,6 +5088,7 @@ var question_1 = __webpack_require__(/*! @App/internal/app/question */ "./src/in
 var question_2 = __webpack_require__(/*! ./question */ "./src/mooc/chaoxing/question.ts");
 var topic_1 = __webpack_require__(/*! @App/internal/app/topic */ "./src/internal/app/topic.ts");
 var task_1 = __webpack_require__(/*! @App/mooc/chaoxing/task */ "./src/mooc/chaoxing/task.ts");
+var ai_1 = __webpack_require__(/*! @App/internal/app/ai */ "./src/internal/app/ai.ts");
 var CxTopicControlBar = /** @class */ (function (_super) {
     __extends(CxTopicControlBar, _super);
     function CxTopicControlBar() {
@@ -5060,6 +5097,10 @@ var CxTopicControlBar = /** @class */ (function (_super) {
     CxTopicControlBar.prototype.defaultBtn = function () {
         var _this = this;
         _super.prototype.defaultBtn.call(this);
+        // 用 AI 答题时不需要「搜索题目」按钮（那是走原题库的入口），直接不显示
+        if (ai_1.AIEnabled()) {
+            return;
+        }
         var topic = utils_1.CssBtn(utils_2.createBtn("搜索题目", "点击搜索题目答案", "cx-btn"));
         topic.style.background = "#3fae93";
         this.prev.append(topic);
