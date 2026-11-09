@@ -529,36 +529,75 @@ exports.CaptureQuestionImage = CaptureQuestionImage;
 // ===== 题图预览小窗：把发给视觉模型的截图浮在页面右上角，方便用户核对 =====
 var previewState = null;
 var previewDrag = null;
+var previewWidth = 280;
+var PREVIEW_STEPS = [280, 380, 520, 720, 980];
 function ShowVisionPreview(dataUrl, text) {
     try {
         if (!dataUrl || !document || !document.body) {
             return;
         }
         if (!previewState || !previewState.box.isConnected) {
+            previewWidth = 280;
             var box_1 = document.createElement("div");
             box_1.style.cssText =
-                "position:fixed;right:14px;top:70px;z-index:2147483647;width:280px;" +
+                "position:fixed;right:14px;top:70px;z-index:2147483647;width:" + previewWidth + "px;" +
                     "background:#ffffff;border:1px solid #d0d7de;border-radius:8px;" +
-                    "box-shadow:0 6px 18px rgba(0,0,0,.28);padding:6px;cursor:move;" +
+                    "box-shadow:0 6px 18px rgba(0,0,0,.28);padding:6px;" +
                     "font:12px/1.5 'Microsoft YaHei',sans-serif;color:#333;";
             var head = document.createElement("div");
-            head.style.cssText = "display:flex;justify-content:space-between;align-items:center;color:#57606a;font-weight:bold;margin-bottom:4px;";
+            head.style.cssText = "display:flex;justify-content:space-between;align-items:center;color:#57606a;font-weight:bold;margin-bottom:4px;cursor:move;user-select:none;";
             var title = document.createElement("span");
             title.textContent = "AI 看到的题目";
+            var tools = document.createElement("span");
+            tools.style.cssText = "display:flex;gap:6px;align-items:center;";
+            var btnStyle = "cursor:pointer;padding:0 7px;font-size:14px;color:#409eff;border:1px solid #d0e2ff;border-radius:4px;line-height:18px;";
+            var zoomOut = document.createElement("span");
+            zoomOut.textContent = "\u2212";
+            zoomOut.title = "缩小";
+            zoomOut.style.cssText = btnStyle;
+            zoomOut.onclick = function (ev) {
+                ev.stopPropagation();
+                var idx = PREVIEW_STEPS.indexOf(previewWidth);
+                if (idx > 0) {
+                    previewWidth = PREVIEW_STEPS[idx - 1];
+                    box_1.style.width = previewWidth + "px";
+                }
+            };
+            var zoomIn = document.createElement("span");
+            zoomIn.textContent = "\uff0b";
+            zoomIn.title = "放大";
+            zoomIn.style.cssText = btnStyle;
+            zoomIn.onclick = function (ev) {
+                ev.stopPropagation();
+                var idx = PREVIEW_STEPS.indexOf(previewWidth);
+                if (idx < 0) {
+                    idx = 0;
+                }
+                if (idx < PREVIEW_STEPS.length - 1) {
+                    previewWidth = PREVIEW_STEPS[idx + 1];
+                    box_1.style.width = previewWidth + "px";
+                    box_1.style.right = "14px";
+                    box_1.style.left = "auto";
+                }
+            };
             var closer = document.createElement("span");
             closer.textContent = "\u00d7";
-            closer.style.cssText = "cursor:pointer;padding:0 6px;font-size:14px;color:#888;";
-            closer.onclick = function () {
+            closer.style.cssText = "cursor:pointer;padding:0 6px;font-size:15px;color:#888;";
+            closer.onclick = function (ev) {
+                ev.stopPropagation();
                 try {
                     box_1.remove();
                 }
                 catch (e) { /* ignore */ }
                 previewState = null;
             };
+            tools.appendChild(zoomOut);
+            tools.appendChild(zoomIn);
+            tools.appendChild(closer);
             head.appendChild(title);
-            head.appendChild(closer);
+            head.appendChild(tools);
             var img = document.createElement("img");
-            img.style.cssText = "display:block;width:100%;border-radius:4px;border:1px solid #eee;";
+            img.style.cssText = "display:block;width:100%;border-radius:4px;border:1px solid #eee;background:#fff;";
             var cap = document.createElement("div");
             cap.style.cssText = "margin-top:4px;color:#0550ae;word-break:break-all;";
             box_1.appendChild(head);
