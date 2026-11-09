@@ -3591,6 +3591,12 @@ var CxCourse = /** @class */ (function (_super) {
     };
     CxCourse.prototype.nextPage = function (num) {
         var _this = this;
+        // 目录监听刚点过"下一节"，这里就别再点一次，避免一次跳两节
+        var navByCatalog = window.__cxNavByCatalog || 0;
+        if (Date.now() - navByCatalog < 15000) {
+            application_1.Application.App.log.Info("目录监听已经切换过，跳过重复翻页");
+            return;
+        }
         var el = this.findNextControl();
         if (el) {
             application_1.Application.App.log.Info("切换到下一节（" + ((el.innerText || el.tagName) + "").slice(0, 20) + "）");
@@ -5513,9 +5519,47 @@ var CxCourseTopic = /** @class */ (function (_super) {
         }
         return null;
     };
-    // 找确认弹窗里的按钮：弹窗文案是「确认提交？」，里面的按钮有时也叫「提交」
-    // 所以不能直接全页找「提交」，否则会点回主按钮。这里先定位弹窗，再在弹窗内点。
-    CxCourseTopic.prototype.findConfirmBtn = function (doc) {
+    // 收集所有能访问的同源 document（当前 iframe → 父帧 → 顶层）
+    // 超星的「确认提交？」弹窗有时不在题目 iframe 里，而是挂在父帧/顶层文档上
+    CxCourseTopic.prototype.collectDocs = function () {
+        var docs = [];
+        var win = this.context;
+        for (var i = 0; i < 5 && win; i++) {
+            try {
+                if (win.document && docs.indexOf(win.document) < 0) {
+                    docs.push(win.document);
+                }
+            }
+            catch (e) {
+                // ignore
+            }
+            var p = null;
+            try {
+                p = win.parent;
+            }
+            catch (e) {
+                p = null;
+            }
+            if (!p || p == win) {
+                break;
+            }
+            win = p;
+        }
+        try {
+            if (docs.indexOf(document) < 0) {
+                docs.push(document);
+            }
+        }
+        catch (e) {
+            // ignore
+        }
+        return docs;
+    };
+    // 在单个 document 里找「确认提交？」弹窗，并返回弹窗里的确认按钮
+    CxCourseTopic.prototype.findConfirmInDoc = function (doc) {
+        if (!doc) {
+            return null;
+        }
         var wantBtn = /^(提交|确定|确认|确认提交|是)$/;
         // 1) 找出「可见 + 含确认字样 + 内含候选按钮」的弹窗容器，取最内层那个
         var dialog = null;
@@ -5551,14 +5595,13 @@ var CxCourseTopic = /** @class */ (function (_super) {
         catch (e) {
             // ignore
         }
-        // 2) 在弹窗内找按钮（优先 button 元素）
-        var scope = dialog || null;
-        if (!scope) {
+        if (!dialog) {
             return null;
         }
+        // 2) 在弹窗内找按钮（优先 button 元素）
         var fallback = null;
         try {
-            var nodes = scope.querySelectorAll("button,a,span,div");
+            var nodes = dialog.querySelectorAll("button,a,span,div");
             for (var i = 0; i < nodes.length; i++) {
                 var el = nodes[i];
                 var t = (el.innerText || el.textContent || "").trim();
@@ -5578,6 +5621,26 @@ var CxCourseTopic = /** @class */ (function (_super) {
             // ignore
         }
         return fallback;
+    };
+    // 跨 document 找确认按钮
+    CxCourseTopic.prototype.findConfirmBtn = function (doc) {
+        var docs = this.collectDocs();
+        if (doc && docs.indexOf(doc) < 0) {
+            docs.unshift(doc);
+        }
+        for (var i = 0; i < docs.length; i++) {
+            try {
+                var el = this.findConfirmInDoc(docs[i]);
+                if (el) {
+                    application_1.Application.App.log.Info("确认弹窗在 frame #" + i + " 里");
+                    return el;
+                }
+            }
+            catch (e) {
+                // ignore
+            }
+        }
+        return null;
     };
     CxCourseTopic.prototype.Submit = function () {
         var _this = this;
@@ -5599,7 +5662,7 @@ var CxCourseTopic = /** @class */ (function (_super) {
                     catch (e) {
                         // ignore
                     }
-                    // 等确认弹窗，最多轮询 6 次（每次 800ms）
+                    // 等确认弹窗，最多轮询 10 次（每次 800ms，约 8 秒）
                     var tries_1 = 0;
                     var clickConfirm_1 = function () {
                         tries_1++;
@@ -5616,18 +5679,23 @@ var CxCourseTopic = /** @class */ (function (_super) {
                             self.context.setTimeout(function () {
                                 var again = self.findConfirmBtn(doc);
                                 if (again && again != confirm) {
-                                    again.click();
+                                    try {
+                                        again.click();
+                                    }
+                                    catch (e) {
+                                        // ignore
+                                    }
                                     application_1.Application.App.log.Info("点击二次确认：" + String(again.innerText || ""));
                                 }
                                 resolve(undefined);
-                            }, 1200);
+                            }, 1500);
                             return;
                         }
-                        if (tries_1 < 6) {
+                        if (tries_1 < 10) {
                             self.context.setTimeout(clickConfirm_1, 800);
                             return;
                         }
-                        application_1.Application.App.log.Info("没有确认框，可能已直接提交完成");
+                        application_1.Application.App.log.Warn("等了约 8 秒没找到确认弹窗，可能已直接提交完成；若没提交请手动点一下");
                         resolve(undefined);
                     };
                     self.context.setTimeout(clickConfirm_1, 800);
@@ -6311,6 +6379,240 @@ exports.mooc = mooc;
 
 /***/ }),
 
+/***/ "./src/tampermonkey/catalog-watch.ts":
+/*!*******************************************!*\
+  !*** ./src/tampermonkey/catalog-watch.ts ***!
+  \*******************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.StartCatalogWatch = void 0;
+// 目录监听：当前章节「变绿」（任务点全部完成）后，自动切到下一个还没变绿的章节
+//
+// 新版学习通的左侧「目录」里，完成的任务点/章节会变成绿色或出现 ✓，
+// 而任务内容区是 iframe，原来的「下一节」按钮在新版里不一定存在。
+// 这里直接盯目录列表：谁刚从"没绿"变成"绿"，就把后面第一个还没绿的章节点开。
+var application_1 = __webpack_require__(/*! @App/internal/application */ "./src/internal/application.ts");
+function isVisible(el) {
+    if (!el) {
+        return false;
+    }
+    try {
+        var r = el.getBoundingClientRect();
+        return r.width > 4 && r.height > 4;
+    }
+    catch (e) {
+        return false;
+    }
+}
+function colorIsGreen(el) {
+    try {
+        var c = window.getComputedStyle(el).color || "";
+        var m = c.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+        if (!m) {
+            return false;
+        }
+        var r = parseInt(m[1], 10);
+        var g = parseInt(m[2], 10);
+        var b = parseInt(m[3], 10);
+        // 绿色：G 明显大于 R 和 B（兼容 #67C23A / #009900 这类）
+        return g > 100 && g > r + 25 && g > b + 25;
+    }
+    catch (e) {
+        return false;
+    }
+}
+// 这一项是否"已完成"（绿色 / 打勾 / 类名提示）
+function isDone(el) {
+    try {
+        var t = el.innerText || el.textContent || "";
+        if (/[✓√✔]/.test(t)) {
+            return true;
+        }
+        var hints = el.querySelectorAll("[class*=dui],[class*=complete],[class*=finish],[class*=success],[class*=green],[class*=yiwancheng],[class*=icondone]");
+        if (hints.length > 0) {
+            return true;
+        }
+        if (colorIsGreen(el)) {
+            return true;
+        }
+        var kids = el.querySelectorAll("span,i,em,b,a,div");
+        for (var i = 0; i < kids.length && i < 60; i++) {
+            if (colorIsGreen(kids[i])) {
+                return true;
+            }
+        }
+    }
+    catch (e) {
+        // ignore
+    }
+    return false;
+}
+function isLocked(el) {
+    try {
+        var t = el.innerText || "";
+        if (t.indexOf("锁") >= 0) {
+            return true;
+        }
+        return el.querySelector("[class*=lock],[class*=suo]") != null;
+    }
+    catch (e) {
+        return false;
+    }
+}
+// 收集目录里的章节项（4.19 机械之美：... 这种），按章节号排序
+function collectCatalogItems() {
+    var out = [];
+    var seen = {};
+    var docs = [document];
+    try {
+        var frames_1 = document.querySelectorAll("iframe");
+        for (var i = 0; i < frames_1.length; i++) {
+            try {
+                var d = frames_1[i].contentDocument;
+                if (d) {
+                    docs.push(d);
+                }
+            }
+            catch (e) {
+                // 跨域 iframe 跳过
+            }
+        }
+    }
+    catch (e) {
+        // ignore
+    }
+    for (var di = 0; di < docs.length; di++) {
+        var nodes = void 0;
+        try {
+            nodes = docs[di].querySelectorAll("a,div,li,span,p");
+        }
+        catch (e) {
+            continue;
+        }
+        for (var i = 0; i < nodes.length; i++) {
+            var el = nodes[i];
+            if (!isVisible(el)) {
+                continue;
+            }
+            var t = (el.innerText || "").trim();
+            var m = t.match(/^(\d+(?:\.\d+)+)\s*\S/);
+            if (!m) {
+                continue;
+            }
+            // 排除整块容器（只认条目级元素）
+            if (el.getElementsByTagName("*").length > 15) {
+                continue;
+            }
+            var num = m[1];
+            if (seen[num]) {
+                continue;
+            }
+            seen[num] = true;
+            out.push({ num: num, el: el });
+        }
+    }
+    out.sort(function (a, b) {
+        var pa = a.num.split(".");
+        var pb = b.num.split(".");
+        for (var i = 0; i < Math.max(pa.length, pb.length); i++) {
+            var va = parseInt(pa[i] || "0", 10);
+            var vb = parseInt(pb[i] || "0", 10);
+            if (va != vb) {
+                return va - vb;
+            }
+        }
+        return 0;
+    });
+    return out;
+}
+function StartCatalogWatch() {
+    if (window.top != window.self) {
+        return;
+    }
+    if (location.href.indexOf("studentstudy") < 0) {
+        return;
+    }
+    var prev = null;
+    var cooldownUntil = 0;
+    setInterval(function () {
+        try {
+            if (!application_1.Application.App || !application_1.Application.App.config || !application_1.Application.App.config.auto) {
+                return;
+            }
+            var now = Date.now();
+            if (now < cooldownUntil) {
+                return;
+            }
+            var items = collectCatalogItems();
+            if (items.length == 0) {
+                return;
+            }
+            var snap = {};
+            for (var i = 0; i < items.length; i++) {
+                snap[items[i].num] = isDone(items[i].el);
+            }
+            if (!prev) {
+                // 第一次先记录基线，避免把"本来就已经完成"的章节当成刚完成
+                prev = snap;
+                return;
+            }
+            var newly = [];
+            for (var k in snap) {
+                if (snap[k] && !prev[k]) {
+                    newly.push(k);
+                }
+            }
+            prev = snap;
+            if (newly.length == 0) {
+                return;
+            }
+            // 取文档顺序里最靠后的"刚变绿"的章节
+            var lastIdx = -1;
+            for (var i = 0; i < items.length; i++) {
+                if (newly.indexOf(items[i].num) >= 0) {
+                    lastIdx = i;
+                }
+            }
+            if (lastIdx < 0) {
+                return;
+            }
+            for (var i = lastIdx + 1; i < items.length; i++) {
+                var it = items[i];
+                if (snap[it.num]) {
+                    continue;
+                }
+                if (isLocked(it.el)) {
+                    application_1.Application.App.log.Info("目录：「" + it.num + "」还没解锁，先等一会儿");
+                    continue;
+                }
+                application_1.Application.App.log.Info("目录：当前章节已完成，切到下一节「" + it.num + "」");
+                cooldownUntil = now + 15000;
+                // 给课程翻页逻辑一个"我刚导航过"的标记，避免两边同时点造成跳两节
+                window.__cxNavByCatalog = now;
+                try {
+                    it.el.click();
+                }
+                catch (e) {
+                    application_1.Application.App.log.Warn("目录：点击下一节失败 " + e);
+                }
+                return;
+            }
+            application_1.Application.App.log.Info("目录：后面已经没有未完成的章节了");
+        }
+        catch (e) {
+            // ignore
+        }
+    }, 2500);
+}
+exports.StartCatalogWatch = StartCatalogWatch;
+
+
+/***/ }),
+
 /***/ "./src/tampermonkey/continue-watch.ts":
 /*!********************************************!*\
   !*** ./src/tampermonkey/continue-watch.ts ***!
@@ -6509,6 +6811,7 @@ var application_1 = __webpack_require__(/*! @App/internal/application */ "./src/
 var mooc_1 = __webpack_require__(/*! @App/mooc/mooc */ "./src/mooc/mooc.ts");
 var platform_1 = __webpack_require__(/*! @App/mooc/chaoxing/platform */ "./src/mooc/chaoxing/platform.ts");
 var continue_watch_1 = __webpack_require__(/*! ./continue-watch */ "./src/tampermonkey/continue-watch.ts");
+var catalog_watch_1 = __webpack_require__(/*! ./catalog-watch */ "./src/tampermonkey/catalog-watch.ts");
 var logger;
 if (top == self) {
     logger = new log_1.PageLog();
@@ -6526,6 +6829,8 @@ app.run();
 continue_watch_1.StartContinueWatch();
 // 视频被暂停时自动恢复播放（在每个 frame 里都跑，视频 iframe 也覆盖）
 continue_watch_1.StartVideoGuard();
+// 目录监听：当前章节变绿（完成）后，自动切到下一个还没变绿的章节
+catalog_watch_1.StartCatalogWatch();
 
 
 /***/ }),

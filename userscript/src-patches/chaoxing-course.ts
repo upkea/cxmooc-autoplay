@@ -149,6 +149,12 @@ export class CxCourse extends EventListener<MoocEvent> implements MoocTaskSet {
     }
 
     protected nextPage(num: number) {
+        // 目录监听刚点过"下一节"，这里就别再点一次，避免一次跳两节
+        let navByCatalog = (<any>window).__cxNavByCatalog || 0;
+        if (Date.now() - navByCatalog < 15000) {
+            Application.App.log.Info("目录监听已经切换过，跳过重复翻页");
+            return;
+        }
         let el = this.findNextControl();
         if (el) {
             Application.App.log.Info("切换到下一节（" + (((el as any).innerText || el.tagName) + "").slice(0, 20) + "）");
