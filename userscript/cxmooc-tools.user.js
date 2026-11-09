@@ -4139,31 +4139,63 @@ var cxSelectQuestion = /** @class */ (function (_super) {
         return _super !== null && _super.apply(this, arguments) || this;
     }
     cxSelectQuestion.prototype.getContent = function (el) {
-        var ret = el.querySelector("a");
-        if (ret == null) {
-            var tmpel = el.querySelector("label > input,input");
-            if (tmpel == null) {
-                // 没有 input 也没有 a：直接把 li 的文字当选项内容
-                return (el.innerText || "").replace(/^\s*[A-Ha-h]\s*[.、]?\s*/, "").trim();
+        // 选项内容：取最后一个非字母的 <a>（第一个 <a> 通常是选项字母标记）
+        var anchors = el.querySelectorAll("a");
+        for (var i = anchors.length - 1; i >= 0; i--) {
+            var t = (anchors[i].innerText || anchors[i].textContent || "").trim();
+            if (t == "" || /^[A-Ha-h]$/.test(t)) {
+                continue;
             }
-            if (tmpel.value == "true") {
-                return "对√";
-            }
+            return t;
+        }
+        var tmpel = el.querySelector("label > input,input");
+        if (tmpel == null) {
+            // 没有 input 也没有内容 a：直接用 li 全文（去掉开头字母前缀）
+            return (el.innerText || "").replace(/^\s*[A-Ha-h]\s*[.、]?\s*/, "").trim();
+        }
+        var v = String(tmpel.value || "").toLowerCase();
+        if (v == "true" || v == "1") {
+            return "对√";
+        }
+        if (v == "false" || v == "0") {
             return "错×";
         }
-        return ret.innerHTML;
+        return (el.innerText || "").replace(/^\s*[A-Ha-h]\s*[.、]?\s*/, "").trim();
     };
     cxSelectQuestion.prototype.getOption = function (el) {
+        // 优先 input.value（若是字母或 "true"/"false"）
         var ipt = el.querySelector("input");
-        if (ipt == null) {
-            var txt = (el.innerText || "").trim();
-            var m = txt.match(/^([A-Ha-h])\s*[.、:：)）]?/);
-            if (m) {
-                return m[1].toUpperCase();
+        var v = "";
+        if (ipt) {
+            v = String(ipt.value || "").trim();
+            if (v != "") {
+                return v;
             }
-            return txt.substring(0, 20);
         }
-        return ipt.value;
+        // 属性里找字母（aria-label / title / name / data-opt）
+        if (ipt) {
+            var attr = (ipt.getAttribute("aria-label") || ipt.getAttribute("title") || ipt.getAttribute("data-opt") || ipt.getAttribute("name") || "").trim();
+            var m = attr.match(/[A-Ha-h]/);
+            if (m) {
+                return m[0].toUpperCase();
+            }
+        }
+        // 字母标记元素（i.fl / a.fl / .fl / option-sign）
+        var letterEl = el.querySelector("i.fl, a.fl, i.option-sign, b.option-sign, .fl");
+        if (letterEl) {
+            var t = (letterEl.innerText || letterEl.textContent || "").trim();
+            var m = t.match(/[A-Ha-h]/);
+            if (m) {
+                return m[0].toUpperCase();
+            }
+        }
+        // 文本开头或第一个独立字母
+        var txt = (el.innerText || el.textContent || "").trim();
+        var m2 = txt.match(/^([A-Ha-h])\s*[.、:：)）]?/) || txt.match(/[A-Ha-h]/);
+        if (m2) {
+            return m2[1].toUpperCase();
+        }
+        return "";
     };
     cxSelectQuestion.prototype.GetOptions = function () {
         var res = new Array();
@@ -4179,16 +4211,25 @@ var cxSelectQuestion = /** @class */ (function (_super) {
         }
         var ipt = el.querySelector("label > input,input");
         if (ipt) {
+            var isCheckbox = String(ipt.type || "").toLowerCase() == "checkbox";
             try {
-                if (!ipt.checked) {
-                    ipt.click();
-                }
+                ipt.click();
             }
             catch (e) {
                 // 页面脚本可能抛错，忽略
             }
+            // 多选（checkbox）：点一次就够，千万别再用 label/li 重复点，否则会取消勾选
+            if (isCheckbox) {
+                try {
+                    this.AddNotice(this.getOption(el) + ":" + content);
+                }
+                catch (e) {
+                    // ignore
+                }
+                return;
+            }
+            // 单选（radio）：点完检查，没选中就逐级补
             if (!ipt.checked) {
-                // 有些页面 input 是隐藏的，真正生效的是外层 label / li
                 try {
                     var label = el.querySelector("label");
                     if (label) {
@@ -4208,7 +4249,7 @@ var cxSelectQuestion = /** @class */ (function (_super) {
                 }
             }
             if (!ipt.checked) {
-                // 最后兜底：直接改 checked 再派发事件
+                // 兜底：强制 checked + 派发事件，绕过页面的 click 处理
                 try {
                     ipt.checked = true;
                     ipt.dispatchEvent(new Event("change", { bubbles: true }));
@@ -4290,6 +4331,24 @@ var cxSelectQuestion = /** @class */ (function (_super) {
                     if (hit >= 0) {
                         _this.click(options[hit], targetContent);
                         flag = true;
+                    }
+                }
+                if (!flag) {
+                    // 诊断：把「要选的」和「实际看到的选项」都打出来，方便定位
+                    try {
+                        var seen = [];
+                        for (var j = 0; j < options.length; j++) {
+                            seen.push(String(_this.getOption(options[j]) || "?") + "=" + String(_this.getContent(options[j]) || "").replace(/\s+/g, " ").slice(0, 16));
+                        }
+                        var want = [];
+                        for (var k = 0; k < s.correct.length; k++) {
+                            var c = s.correct[k];
+                            want.push((c ? String(c.option) + "/" + String(c.content || "") : "?"));
+                        }
+                        Application.App.log.Warn("选项没匹配上 | 要选:" + JSON.stringify(want) + " | 页面选项:" + JSON.stringify(seen));
+                    }
+                    catch (e) {
+                        // ignore
                     }
                 }
                 return resolve(flag ? "ok" : "no_match");
@@ -4987,14 +5046,12 @@ var CxTaskControlBar = /** @class */ (function () {
         // 优先把按钮挪进「小工具通知条」，别挡住视频；面板还没创建就稍后重试
         this.moveToNoticePanel(0);
     }
-    // 任务点唯一标识，用于识别"同一个任务点被创建了两次"
     CxTaskControlBar.taskKey = function (task) {
         var info = task && task.taskinfo;
         var prop = info && info.property;
-        if (!prop) {
-            return "";
-        }
-        return String(prop.objectid || prop.jobid || prop.mid || "");
+        var id = prop ? String(prop.objectid || prop.jobid || prop.mid || "") : "";
+        // 没有稳定 id 时给个唯一后缀，避免多个按钮共用一个空 key 导致互相误删
+        return id || ("_auto_" + (++CxTaskControlBar.keySeq));
     };
     CxTaskControlBar.prototype.moveToNoticePanel = function (tryCount) {
         var _this = this;
@@ -5066,6 +5123,8 @@ var CxTaskControlBar = /** @class */ (function () {
         };
         return download;
     };
+    // 任务点唯一标识，用于识别"同一个任务点被创建了两次"
+    CxTaskControlBar.keySeq = 0;
     return CxTaskControlBar;
 }());
 exports.CxTaskControlBar = CxTaskControlBar;

@@ -72,13 +72,13 @@ export class CxTaskControlBar {
     }
 
     // 任务点唯一标识，用于识别"同一个任务点被创建了两次"
+    private static keySeq = 0;
     protected static taskKey(task: CxTask): string {
         let info: any = task && (<any>task).taskinfo;
         let prop: any = info && info.property;
-        if (!prop) {
-            return "";
-        }
-        return String(prop.objectid || prop.jobid || prop.mid || "");
+        let id = prop ? String(prop.objectid || prop.jobid || prop.mid || "") : "";
+        // 没有稳定 id 时给个唯一后缀，避免多个按钮共用一个空 key 导致互相误删
+        return id || ("_auto_" + (++CxTaskControlBar.keySeq));
     }
 
     protected moveToNoticePanel(tryCount: number) {

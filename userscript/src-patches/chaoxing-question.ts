@@ -273,32 +273,64 @@ abstract class cxQuestion implements Question {
 class cxSelectQuestion extends cxQuestion implements Question {
 
     protected getContent(el: HTMLElement): string {
-        let ret = el.querySelector("a");
-        if (ret == null) {
-            let tmpel = <HTMLInputElement>el.querySelector("label > input,input");
-            if (tmpel == null) {
-                // 没有 input 也没有 a：直接把 li 的文字当选项内容
-                return (el.innerText || "").replace(/^\s*[A-Ha-h]\s*[.、]?\s*/, "").trim();
+        // 选项内容：取最后一个非字母的 <a>（第一个 <a> 通常是选项字母标记）
+        let anchors = el.querySelectorAll("a");
+        for (let i = anchors.length - 1; i >= 0; i--) {
+            let t = (anchors[i].innerText || anchors[i].textContent || "").trim();
+            if (t == "" || /^[A-Ha-h]$/.test(t)) {
+                continue;
             }
-            if (tmpel.value == "true") {
-                return "对√";
-            }
+            return t;
+        }
+        let tmpel = <HTMLInputElement>el.querySelector("label > input,input");
+        if (tmpel == null) {
+            // 没有 input 也没有内容 a：直接用 li 全文（去掉开头字母前缀）
+            return (el.innerText || "").replace(/^\s*[A-Ha-h]\s*[.、]?\s*/, "").trim();
+        }
+        let v = String(tmpel.value || "").toLowerCase();
+        if (v == "true" || v == "1") {
+            return "对√";
+        }
+        if (v == "false" || v == "0") {
             return "错×";
         }
-        return ret.innerHTML;
+        return (el.innerText || "").replace(/^\s*[A-Ha-h]\s*[.、]?\s*/, "").trim();
     }
 
     protected getOption(el: HTMLElement): string {
+        // 优先 input.value（若是字母或 "true"/"false"）
         let ipt = <HTMLInputElement>el.querySelector("input");
-        if (ipt == null) {
-            let txt = (el.innerText || "").trim();
-            let m = txt.match(/^([A-Ha-h])\s*[.、:：)）]?/);
-            if (m) {
-                return m[1].toUpperCase();
+        let v = "";
+        if (ipt) {
+            v = String(ipt.value || "").trim();
+            if (v != "") {
+                return v;
             }
-            return txt.substring(0, 20);
         }
-        return ipt.value;
+        // 属性里找字母（aria-label / title / name / data-opt）
+        if (ipt) {
+            let attr = (ipt.getAttribute("aria-label") || ipt.getAttribute("title") || ipt.getAttribute("data-opt") || ipt.getAttribute("name") || "").trim();
+            let m = attr.match(/[A-Ha-h]/);
+            if (m) {
+                return m[0].toUpperCase();
+            }
+        }
+        // 字母标记元素（i.fl / a.fl / .fl / option-sign）
+        let letterEl = el.querySelector("i.fl, a.fl, i.option-sign, b.option-sign, .fl");
+        if (letterEl) {
+            let t = (letterEl.innerText || letterEl.textContent || "").trim();
+            let m = t.match(/[A-Ha-h]/);
+            if (m) {
+                return m[0].toUpperCase();
+            }
+        }
+        // 文本开头或第一个独立字母
+        let txt = (el.innerText || el.textContent || "").trim();
+        let m2 = txt.match(/^([A-Ha-h])\s*[.、:：)）]?/) || txt.match(/[A-Ha-h]/);
+        if (m2) {
+            return m2[1].toUpperCase();
+        }
+        return "";
     }
 
     public GetOptions(): Option[] {
@@ -316,15 +348,23 @@ class cxSelectQuestion extends cxQuestion implements Question {
         }
         let ipt = <HTMLInputElement>el.querySelector("label > input,input");
         if (ipt) {
+            let isCheckbox = String(ipt.type || "").toLowerCase() == "checkbox";
             try {
-                if (!ipt.checked) {
-                    ipt.click();
-                }
+                ipt.click();
             } catch (e) {
                 // 页面脚本可能抛错，忽略
             }
+            // 多选（checkbox）：点一次就够，千万别再用 label/li 重复点，否则会取消勾选
+            if (isCheckbox) {
+                try {
+                    this.AddNotice(this.getOption(el) + ":" + content);
+                } catch (e) {
+                    // ignore
+                }
+                return;
+            }
+            // 单选（radio）：点完检查，没选中就逐级补
             if (!ipt.checked) {
-                // 有些页面 input 是隐藏的，真正生效的是外层 label / li
                 try {
                     let label = <HTMLElement>el.querySelector("label");
                     if (label) {
@@ -342,7 +382,7 @@ class cxSelectQuestion extends cxQuestion implements Question {
                 }
             }
             if (!ipt.checked) {
-                // 最后兜底：直接改 checked 再派发事件
+                // 兜底：强制 checked + 派发事件，绕过页面的 click 处理
                 try {
                     ipt.checked = true;
                     ipt.dispatchEvent(new Event("change", {bubbles: true}));
@@ -420,6 +460,23 @@ class cxSelectQuestion extends cxQuestion implements Question {
                     if (hit >= 0) {
                         this.click(options[hit], targetContent);
                         flag = true;
+                    }
+                }
+                if (!flag) {
+                    // 诊断：把「要选的」和「实际看到的选项」都打出来，方便定位
+                    try {
+                        let seen: string[] = [];
+                        for (let j = 0; j < options.length; j++) {
+                            seen.push(String(this.getOption(options[j]) || "?") + "=" + String(this.getContent(options[j]) || "").replace(/\s+/g, " ").slice(0, 16));
+                        }
+                        let want: string[] = [];
+                        for (let k = 0; k < s.correct.length; k++) {
+                            let c: any = s.correct[k];
+                            want.push((c ? String(c.option) + "/" + String(c.content || "") : "?"));
+                        }
+                        Application.App.log.Warn("选项没匹配上 | 要选:" + JSON.stringify(want) + " | 页面选项:" + JSON.stringify(seen));
+                    } catch (e) {
+                        // ignore
                     }
                 }
                 return resolve(flag ? "ok" : "no_match");
