@@ -94,7 +94,7 @@ window.addEventListener("load", () => {
 .tools-logger-panel{
     width: 360px;
     height: auto;
-    max-height: 260px;
+    max-height: 470px;
     color:#000;
     position: fixed;
     margin: 0 auto;
@@ -134,7 +134,7 @@ window.addEventListener("load", () => {
 
 .tools-notice-content {
     width: 100%;
-    height: 220px;
+    height: 200px;
     border-top:0px;
     overflow-y: scroll;
     overflow-x: hidden;
@@ -157,6 +157,95 @@ window.addEventListener("load", () => {
 
 .tools-btn-bar .cx-btn {
     margin: 0 !important;
+}
+
+/* 小工具通知条里的 AI 答题栏（更改API 按钮 + 自动答题开关 + 状态） */
+.tools-ai-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 6px;
+    border-top: 1px solid #eee;
+    border-bottom: 1px solid #eee;
+    box-sizing: border-box;
+    background: rgba(255, 255, 255, 0.5);
+}
+
+.tools-ai-bar .tools-ai-btn {
+    margin: 0 !important;
+}
+
+.tools-ai-bar .switch {
+    margin: 0;
+    width: auto;
+}
+
+.tools-ai-bar .switch span {
+    color: #000;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.tools-ai-status {
+    font-size: 11px;
+    color: #c33;
+    margin-left: auto;
+    white-space: nowrap;
+}
+
+/* 更改API 展开的填写表单 */
+.tools-ai-form {
+    display: none;
+    padding: 6px;
+    border-bottom: 1px solid #eee;
+    text-align: left;
+    box-sizing: border-box;
+    background: rgba(255, 255, 255, 0.85);
+}
+
+.tools-ai-form .row {
+    display: flex;
+    align-items: center;
+    margin-bottom: 4px;
+}
+
+.tools-ai-form .row > span {
+    width: 58px;
+    flex: none;
+    font-size: 12px;
+    color: #333;
+}
+
+.tools-ai-form .row input {
+    flex: 1;
+    min-width: 0;
+    height: 22px;
+    padding: 0 4px;
+    font-size: 12px;
+    color: #000;
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+    outline: none;
+    box-sizing: border-box;
+}
+
+.tools-ai-form .row input:focus {
+    border-color: #409EFF;
+}
+
+.tools-ai-form .tools-ai-actions {
+    gap: 6px;
+    margin-bottom: 0;
+}
+
+.tools-ai-form .tools-ai-actions .cx-btn {
+    margin: 0 !important;
+}
+
+.tools-ai-hint {
+    font-size: 11px;
+    color: #999;
 }
 
 .tools-notice-content .log {

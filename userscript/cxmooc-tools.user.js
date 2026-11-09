@@ -41,8 +41,18 @@ let config = {
     ai_model: "Qwen/Qwen2.5-7B-Instruct",//模型名
 };
 
+// 用户在面板里改过的 AI 配置（更改API / 自动答题开关）单独存一份，刷新后恢复
+let cxCustomConfig = {};
+try {
+    cxCustomConfig = JSON.parse(localStorage.getItem("cx_ai_custom") || "{}") || {};
+} catch (e) {
+    cxCustomConfig = {};
+}
 Object.keys(config).forEach(k => {
     localStorage[k] = config[k];
+});
+Object.keys(cxCustomConfig).forEach(k => {
+    localStorage[k] = cxCustomConfig[k];
 });
 
 /******/ (function(modules) { // webpackBootstrap
@@ -1984,19 +1994,26 @@ var PageLog = /** @class */ (function () {
         window.addEventListener("load", function () {
             _this.div = document.createElement("div");
             // 主要布局
-            _this.div.innerHTML = "\n            <div class=\"head\" id=\"tools-head\"> \n               <span>\u5C0F\u5DE5\u5177\u901A\u77E5\u6761</span> \n               <label class=\"switch\" style=\"width:90px\">\n                  <input class=\"checkbox-input\" id=\"checkbox\" type=\"checkbox\" checked=\"checked\">\n                  <label class=\"checkbox\" for=\"checkbox\"></label>\n                  <span>\u684C\u9762\u901A\u77E5</span>\n               </label>\n               <span class=\"close\" style=\"float:right; cursor:pointer; margin-right:5px;\">x</span>\n            </div>\n            <div class=\"tools-btn-bar\" id=\"tools-btn-bar\"></div>\n            <div class=\"main\">\n               <div class=\"tools-notice-content\"></div>\n            </div>\n            ";
+            _this.div.innerHTML = "\n            <div class=\"head\" id=\"tools-head\"> \n               <span>\u5C0F\u5DE5\u5177\u901A\u77E5\u6761</span> \n               <label class=\"switch\" style=\"width:90px\">\n                  <input class=\"checkbox-input\" id=\"checkbox\" type=\"checkbox\" checked=\"checked\">\n                  <label class=\"checkbox\" for=\"checkbox\"></label>\n                  <span>\u684C\u9762\u901A\u77E5</span>\n               </label>\n               <span class=\"close\" style=\"float:right; cursor:pointer; margin-right:5px;\">x</span>\n            </div>\n            <div class=\"tools-ai-bar\" id=\"tools-ai-bar\">\n               <button class=\"cx-btn tools-ai-btn\" id=\"tools-ai-btn\" title=\"\u586B\u5199\u63A5\u53E3\u5730\u5740 / API Key / \u6A21\u578B\u540D\u79F0\">\u66F4\u6539API</button>\n               <label class=\"switch\">\n                  <input class=\"checkbox-input\" id=\"ai-auto-checkbox\" type=\"checkbox\">\n                  <label class=\"checkbox\" for=\"ai-auto-checkbox\"></label>\n                  <span>\u81EA\u52A8\u7B54\u9898</span>\n               </label>\n               <span class=\"tools-ai-status\" id=\"ai-status\"></span>\n            </div>\n            <div class=\"tools-ai-form\" id=\"tools-ai-form\">\n               <div class=\"row\"><span>\u63A5\u53E3\u5730\u5740</span><input id=\"ai-base-input\" type=\"text\" spellcheck=\"false\" placeholder=\"https://api.deepseek.com/v1\"></div>\n               <div class=\"row\"><span>API Key</span><input id=\"ai-key-input\" type=\"password\" spellcheck=\"false\" placeholder=\"sk-...\"></div>\n               <div class=\"row\"><span>\u6A21\u578B\u540D</span><input id=\"ai-model-input\" type=\"text\" spellcheck=\"false\" placeholder=\"deepseek-chat\"></div>\n               <div class=\"row tools-ai-actions\">\n                  <button class=\"cx-btn\" id=\"ai-save-btn\">\u4FDD\u5B58</button>\n                  <button class=\"cx-btn\" id=\"ai-cancel-btn\">\u53D6\u6D88</button>\n                  <span class=\"tools-ai-hint\">\u4E0D\u4F1A\u586B\uFF1F\u770B docs/AI-GUIDE.md</span>\n               </div>\n            </div>\n            <div class=\"tools-btn-bar\" id=\"tools-btn-bar\"></div>\n            <div class=\"main\">\n               <div class=\"tools-notice-content\"></div>\n            </div>\n            ";
             _this.div.className = "tools-logger-panel";
             document.body.appendChild(_this.div);
             _this.el = _this.div.querySelector(".tools-notice-content");
             _this.div.querySelector(".close").onclick = function () {
                 // 面板关掉时，把按钮栏里的按钮挪到悬浮小条，避免"暂停挂机"点不到
                 var bar = _this.div.querySelector("#tools-btn-bar");
-                if (bar && bar.children.length > 0) {
+                var aiBar = _this.div.querySelector("#tools-ai-bar");
+                if ((bar && bar.children.length > 0) || aiBar) {
                     var holder = document.createElement("div");
                     holder.id = "tools-btn-float";
                     holder.style.cssText = "position:fixed;right:16px;top:130px;z-index:2147483000;background:#fff;border:1px solid #eee;border-radius:6px;box-shadow:0 2px 10px rgba(0,0,0,.18);padding:4px;display:flex;flex-wrap:wrap;gap:4px;max-width:220px;";
-                    while (bar.firstChild) {
-                        holder.appendChild(bar.firstChild);
+                    if (aiBar) {
+                        aiBar.style.cssText = "display:flex;flex-wrap:wrap;gap:4px;padding:0 0 4px;border-bottom:1px solid #eee;width:100%;";
+                        holder.appendChild(aiBar);
+                    }
+                    if (bar) {
+                        while (bar.firstChild) {
+                            holder.appendChild(bar.firstChild);
+                        }
                     }
                     document.body.appendChild(holder);
                 }
@@ -2013,6 +2030,105 @@ var PageLog = /** @class */ (function () {
             checkbox.addEventListener("change", function () {
                 self.is_notify = this.checked;
                 application_1.Application.App.config.SetConfig("is_notify", this.checked.toString());
+            });
+            // ===== AI 答题：更改API 按钮 + 自动答题开关 =====
+            var readConf = function (key, def) {
+                try {
+                    var v = application_1.Application.App.config.GetConfig(key, def);
+                    if (v === undefined || v === null || String(v).trim() === "") {
+                        return def;
+                    }
+                    return String(v).trim();
+                }
+                catch (e) {
+                    return def;
+                }
+            };
+            var writeConf = function (key, val) {
+                try {
+                    application_1.Application.App.config.SetConfig(key, val);
+                }
+                catch (e) {
+                    // ignore
+                }
+                // 额外记一份到 localStorage，刷新后由脚本头部恢复（否则会被默认配置覆盖）
+                try {
+                    var custom = {};
+                    try {
+                        custom = JSON.parse(localStorage.getItem("cx_ai_custom") || "{}") || {};
+                    }
+                    catch (e) {
+                        custom = {};
+                    }
+                    custom[key] = val;
+                    localStorage.setItem("cx_ai_custom", JSON.stringify(custom));
+                }
+                catch (e) {
+                    // ignore
+                }
+            };
+            var aiBtn = _this.div.querySelector("#tools-ai-btn");
+            var aiForm = _this.div.querySelector("#tools-ai-form");
+            var aiBaseInput = _this.div.querySelector("#ai-base-input");
+            var aiKeyInput = _this.div.querySelector("#ai-key-input");
+            var aiModelInput = _this.div.querySelector("#ai-model-input");
+            var aiAuto = _this.div.querySelector("#ai-auto-checkbox");
+            var aiStatus = _this.div.querySelector("#ai-status");
+            var fillAIApiForm = function () {
+                aiBaseInput.value = readConf("ai_base", "https://api.siliconflow.cn/v1");
+                aiKeyInput.value = readConf("ai_key", "");
+                aiModelInput.value = readConf("ai_model", "Qwen/Qwen2.5-7B-Instruct");
+            };
+            var refreshAIStatus = function () {
+                var on = readConf("ai_enable", "true") != "false";
+                var key = readConf("ai_key", "");
+                aiAuto.checked = on;
+                if (!on) {
+                    aiStatus.innerText = "自动答题：关";
+                    aiStatus.style.color = "#c33";
+                }
+                else if (!key) {
+                    aiStatus.innerText = "未填 Key";
+                    aiStatus.style.color = "#c33";
+                }
+                else {
+                    aiStatus.innerText = "已配置";
+                    aiStatus.style.color = "#3a9";
+                }
+            };
+            fillAIApiForm();
+            refreshAIStatus();
+            aiBtn.onclick = function () {
+                if (aiForm.style.display == "block") {
+                    aiForm.style.display = "none";
+                    return;
+                }
+                fillAIApiForm();
+                aiForm.style.display = "block";
+            };
+            _this.div.querySelector("#ai-save-btn").onclick = function () {
+                var base = aiBaseInput.value.trim().replace(/\/+$/, "");
+                var key = aiKeyInput.value.trim();
+                var model = aiModelInput.value.trim();
+                if (base && base.indexOf("http") != 0) {
+                    base = "https://" + base;
+                }
+                writeConf("ai_base", base || "https://api.siliconflow.cn/v1");
+                writeConf("ai_key", key);
+                writeConf("ai_model", model || "Qwen/Qwen2.5-7B-Instruct");
+                aiForm.style.display = "none";
+                refreshAIStatus();
+                _this.Info("AI 配置已保存：" + (base || "默认接口") + " / " +
+                    (model || "默认模型") + (key ? "" : "（Key 为空，自动答题不会生效）"));
+            };
+            _this.div.querySelector("#ai-cancel-btn").onclick = function () {
+                aiForm.style.display = "none";
+                fillAIApiForm();
+            };
+            aiAuto.addEventListener("change", function () {
+                writeConf("ai_enable", aiAuto.checked ? "true" : "false");
+                refreshAIStatus();
+                _this.Info(aiAuto.checked ? "自动答题已开启（用 AI 作答）" : "自动答题已关闭（改走原题库逻辑）");
             });
             setTimeout(function () {
                 application_1.Application.CheckUpdate(function (isnew, data) {
@@ -5519,7 +5635,7 @@ continue_watch_1.StartVideoGuard();
 /***/ (function(module, exports) {
 
 window.addEventListener("load", function () {
-    var css = "\n@keyframes aniripple  \n{\n    0%{\n        width:0px;\n        height:0px;\n        opacity:0.4;\n    }\n    100%{\n        width:500px;\n        height:500px;\n        opacity:0;\n    }\n}  \n\n#cxtools {\n    position: absolute;\n    left: 250px;\n    top: 2px;\n    width: 210px;\n    font-size: 0;\n}\n\n.cx-btn {\n    outline: none;\n    border: 0;\n    background: #7d9d35;\n    color: #fff;\n    border-radius: 4px;\n    padding: 2px 8px;\n    cursor: pointer;\n    font-size: 12px;\n    margin-left: 4px;\n}\n\n.cx-btn:hover {\n    box-shadow: 1px 1px 1px 1px #ccc;\n}\n\n.zhs-tools-btn {\n    color: #fff;\n    background: #ff9d34;\n    padding: 4px;\n    display: inline-block;\n    height: 24px;\n    font-size: 14px;\n    line-height: 24px;\n    margin:0;\n    cursor:pointer;\n}\n.btn-ripple{\n    position:absolute;\n    background:#000;\n    pointer-events:none;\n    transform:translate(-50%,-50%);\n    border-radius:50%;\n    animation:aniripple 1s linear infinite;\n}\n\n.zhs-start-btn{\n    background: #36ac36;\n}\n\n.zhs-start-btn:hover{\n    background: #3b8d3b;\n}\n\n#zhs-ytbn {\n    color: #fff;\n    background: #e777ff;\n}\n\n#zhs-ytbn:hover {\n    background: #e7b7f1;\n}\n\n.zhs-search-answer {\n    border: 0;\n    outline: none;\n    padding: 4px;\n}\n\n.zhs-search-answer:hover {\n    opacity: .85;\n}\n\n.mooc163-search{\n    background-color: #60b900;\n    display: block;\n    margin: 0 auto;\n}\n\n.tools-logger-panel{\n    width: 360px;\n    height: auto;\n    max-height: 260px;\n    color:#000;\n    position: fixed;\n    margin: 0 auto;\n    display: block;\n    font-size: 14px;\n    border-radius: 4px;\n    width: 340px;\n    text-align: center;\n    overflow: hidden;\n    left:60px;\n    top: 40px;\n    z-index: 100000;\n    background: rgba(256, 256, 256, 0.3);\n    box-shadow: 0px 0px 5px #bbb;\n}\n\n.head {\n    width: 100%;\n    height: 30px;\n    padding: 4px;\n    box-sizing: border-box;\n    cursor: move;\n    transition-property: opacity, background-color;\n    transition: 200ms ease-in-out;\n}\n\n.head span{\n    color:#000;\n    float:left;\n    font-weight: 550;\n}\n\n.status {\n    color: #67C23A;\n    font-weight: 600;\n}\n\n.tools-notice-content {\n    width: 100%;\n    height: 220px;\n    border-top:0px;\n    overflow-y: scroll;\n    overflow-x: hidden;\n}\n\n/* \u5C0F\u5DE5\u5177\u901A\u77E5\u6761\u91CC\u7684\u6309\u94AE\u680F\uFF08\u5F00\u59CB\u6302\u673A/\u79D2\u8FC7\u89C6\u9891/\u4E0B\u8F7D\u8D44\u6E90/\u4E0B\u8F7D\u5B57\u5E55\uFF09 */\n.tools-btn-bar {\n    display: flex;\n    flex-wrap: wrap;\n    gap: 4px;\n    padding: 6px 4px;\n    border-top: 1px solid #eee;\n    border-bottom: 1px solid #eee;\n    box-sizing: border-box;\n}\n\n.tools-btn-bar:empty {\n    display: none;\n}\n\n.tools-btn-bar .cx-btn {\n    margin: 0 !important;\n}\n\n.tools-notice-content .log {\n    height: auto;\n    width: auto;\n    text-align: center;\n    border: 1px solid #eee;\n    overflow: hidden;\n}\n\n.tools-notice-content .log p {\n    margin: 0;\n    color: #aaa;\n    font-size: 11px;\n    font-weight: 500;\n    font-family: Arial, Helvetica, sans-serif;\n    line-height: 26px;\n}\n\n/* \u6EDA\u52A8\u69FD */\n::-webkit-scrollbar {\n    width: 10px;\n    height: 10px;\n}\n\n::-webkit-scrollbar-track {\n    border-radius: 3px;\n    background: rgba(0, 0, 0, 0.06);\n    -webkit-box-shadow: inset 0 0 5px rgba(0, 0, 0, 0.08);\n}\n\n/* \u6EDA\u52A8\u6761\u6ED1\u5757 */\n::-webkit-scrollbar-thumb {\n    border-radius: 3px;\n    background: rgba(0, 0, 0, 0.12);\n    -webkit-box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.2);\n}\n\n/* \u590D\u9009\u6846 */\n.switch {\n    margin: 2px auto;\n    display: inline-flex;\n    align-items: center;\n    width: auto;\n}\n.checkbox-input {\n    display: none\n}\n.checkbox {\n    -webkit-transition: background-color 0.3s;\n    transition: background-color 0.3s;\n    background-color: #fff;\n    border: 1px solid #d7d7d7;\n    border-radius: 50px;\n    width: 16px;\n    height: 16px;\n    vertical-align:middle;\n    margin: 0 5px;\n}\n.checkbox-input:checked+.checkbox {\n    background-color: #409EFF;\n}\n.checkbox-input:checked+.checkbox:after {\n    // content: \"\u221A\";\n    display: inline-block;\n    height: 100%;\n    width: 100%;\n    color: #fff;\n    text-align: center;\n    line-height: 16px;\n    font-size: 12px;\n    box-shadow: 0 0 4px #409EFF;\n}\n\n.tools-logger-panel:hover,\n.tools-logger-panel:focus-within {\n    background: rgba(256, 256, 256, 0.7);\n}\n\n.tools-logger-panel .head:active {\n    background-color: #E5E5E5;\n}\n\n.tools-logger-panel > .close {\n    margin: 2px;\n}\n\n";
+    var css = "\n@keyframes aniripple  \n{\n    0%{\n        width:0px;\n        height:0px;\n        opacity:0.4;\n    }\n    100%{\n        width:500px;\n        height:500px;\n        opacity:0;\n    }\n}  \n\n#cxtools {\n    position: absolute;\n    left: 250px;\n    top: 2px;\n    width: 210px;\n    font-size: 0;\n}\n\n.cx-btn {\n    outline: none;\n    border: 0;\n    background: #7d9d35;\n    color: #fff;\n    border-radius: 4px;\n    padding: 2px 8px;\n    cursor: pointer;\n    font-size: 12px;\n    margin-left: 4px;\n}\n\n.cx-btn:hover {\n    box-shadow: 1px 1px 1px 1px #ccc;\n}\n\n.zhs-tools-btn {\n    color: #fff;\n    background: #ff9d34;\n    padding: 4px;\n    display: inline-block;\n    height: 24px;\n    font-size: 14px;\n    line-height: 24px;\n    margin:0;\n    cursor:pointer;\n}\n.btn-ripple{\n    position:absolute;\n    background:#000;\n    pointer-events:none;\n    transform:translate(-50%,-50%);\n    border-radius:50%;\n    animation:aniripple 1s linear infinite;\n}\n\n.zhs-start-btn{\n    background: #36ac36;\n}\n\n.zhs-start-btn:hover{\n    background: #3b8d3b;\n}\n\n#zhs-ytbn {\n    color: #fff;\n    background: #e777ff;\n}\n\n#zhs-ytbn:hover {\n    background: #e7b7f1;\n}\n\n.zhs-search-answer {\n    border: 0;\n    outline: none;\n    padding: 4px;\n}\n\n.zhs-search-answer:hover {\n    opacity: .85;\n}\n\n.mooc163-search{\n    background-color: #60b900;\n    display: block;\n    margin: 0 auto;\n}\n\n.tools-logger-panel{\n    width: 360px;\n    height: auto;\n    max-height: 470px;\n    color:#000;\n    position: fixed;\n    margin: 0 auto;\n    display: block;\n    font-size: 14px;\n    border-radius: 4px;\n    width: 340px;\n    text-align: center;\n    overflow: hidden;\n    left:60px;\n    top: 40px;\n    z-index: 100000;\n    background: rgba(256, 256, 256, 0.3);\n    box-shadow: 0px 0px 5px #bbb;\n}\n\n.head {\n    width: 100%;\n    height: 30px;\n    padding: 4px;\n    box-sizing: border-box;\n    cursor: move;\n    transition-property: opacity, background-color;\n    transition: 200ms ease-in-out;\n}\n\n.head span{\n    color:#000;\n    float:left;\n    font-weight: 550;\n}\n\n.status {\n    color: #67C23A;\n    font-weight: 600;\n}\n\n.tools-notice-content {\n    width: 100%;\n    height: 200px;\n    border-top:0px;\n    overflow-y: scroll;\n    overflow-x: hidden;\n}\n\n/* \u5C0F\u5DE5\u5177\u901A\u77E5\u6761\u91CC\u7684\u6309\u94AE\u680F\uFF08\u5F00\u59CB\u6302\u673A/\u79D2\u8FC7\u89C6\u9891/\u4E0B\u8F7D\u8D44\u6E90/\u4E0B\u8F7D\u5B57\u5E55\uFF09 */\n.tools-btn-bar {\n    display: flex;\n    flex-wrap: wrap;\n    gap: 4px;\n    padding: 6px 4px;\n    border-top: 1px solid #eee;\n    border-bottom: 1px solid #eee;\n    box-sizing: border-box;\n}\n\n.tools-btn-bar:empty {\n    display: none;\n}\n\n.tools-btn-bar .cx-btn {\n    margin: 0 !important;\n}\n\n/* \u5C0F\u5DE5\u5177\u901A\u77E5\u6761\u91CC\u7684 AI \u7B54\u9898\u680F\uFF08\u66F4\u6539API \u6309\u94AE + \u81EA\u52A8\u7B54\u9898\u5F00\u5173 + \u72B6\u6001\uFF09 */\n.tools-ai-bar {\n    display: flex;\n    align-items: center;\n    gap: 8px;\n    padding: 4px 6px;\n    border-top: 1px solid #eee;\n    border-bottom: 1px solid #eee;\n    box-sizing: border-box;\n    background: rgba(255, 255, 255, 0.5);\n}\n\n.tools-ai-bar .tools-ai-btn {\n    margin: 0 !important;\n}\n\n.tools-ai-bar .switch {\n    margin: 0;\n    width: auto;\n}\n\n.tools-ai-bar .switch span {\n    color: #000;\n    font-size: 12px;\n    font-weight: 500;\n}\n\n.tools-ai-status {\n    font-size: 11px;\n    color: #c33;\n    margin-left: auto;\n    white-space: nowrap;\n}\n\n/* \u66F4\u6539API \u5C55\u5F00\u7684\u586B\u5199\u8868\u5355 */\n.tools-ai-form {\n    display: none;\n    padding: 6px;\n    border-bottom: 1px solid #eee;\n    text-align: left;\n    box-sizing: border-box;\n    background: rgba(255, 255, 255, 0.85);\n}\n\n.tools-ai-form .row {\n    display: flex;\n    align-items: center;\n    margin-bottom: 4px;\n}\n\n.tools-ai-form .row > span {\n    width: 58px;\n    flex: none;\n    font-size: 12px;\n    color: #333;\n}\n\n.tools-ai-form .row input {\n    flex: 1;\n    min-width: 0;\n    height: 22px;\n    padding: 0 4px;\n    font-size: 12px;\n    color: #000;\n    background: #fff;\n    border: 1px solid #ddd;\n    border-radius: 3px;\n    outline: none;\n    box-sizing: border-box;\n}\n\n.tools-ai-form .row input:focus {\n    border-color: #409EFF;\n}\n\n.tools-ai-form .tools-ai-actions {\n    gap: 6px;\n    margin-bottom: 0;\n}\n\n.tools-ai-form .tools-ai-actions .cx-btn {\n    margin: 0 !important;\n}\n\n.tools-ai-hint {\n    font-size: 11px;\n    color: #999;\n}\n\n.tools-notice-content .log {\n    height: auto;\n    width: auto;\n    text-align: center;\n    border: 1px solid #eee;\n    overflow: hidden;\n}\n\n.tools-notice-content .log p {\n    margin: 0;\n    color: #aaa;\n    font-size: 11px;\n    font-weight: 500;\n    font-family: Arial, Helvetica, sans-serif;\n    line-height: 26px;\n}\n\n/* \u6EDA\u52A8\u69FD */\n::-webkit-scrollbar {\n    width: 10px;\n    height: 10px;\n}\n\n::-webkit-scrollbar-track {\n    border-radius: 3px;\n    background: rgba(0, 0, 0, 0.06);\n    -webkit-box-shadow: inset 0 0 5px rgba(0, 0, 0, 0.08);\n}\n\n/* \u6EDA\u52A8\u6761\u6ED1\u5757 */\n::-webkit-scrollbar-thumb {\n    border-radius: 3px;\n    background: rgba(0, 0, 0, 0.12);\n    -webkit-box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.2);\n}\n\n/* \u590D\u9009\u6846 */\n.switch {\n    margin: 2px auto;\n    display: inline-flex;\n    align-items: center;\n    width: auto;\n}\n.checkbox-input {\n    display: none\n}\n.checkbox {\n    -webkit-transition: background-color 0.3s;\n    transition: background-color 0.3s;\n    background-color: #fff;\n    border: 1px solid #d7d7d7;\n    border-radius: 50px;\n    width: 16px;\n    height: 16px;\n    vertical-align:middle;\n    margin: 0 5px;\n}\n.checkbox-input:checked+.checkbox {\n    background-color: #409EFF;\n}\n.checkbox-input:checked+.checkbox:after {\n    // content: \"\u221A\";\n    display: inline-block;\n    height: 100%;\n    width: 100%;\n    color: #fff;\n    text-align: center;\n    line-height: 16px;\n    font-size: 12px;\n    box-shadow: 0 0 4px #409EFF;\n}\n\n.tools-logger-panel:hover,\n.tools-logger-panel:focus-within {\n    background: rgba(256, 256, 256, 0.7);\n}\n\n.tools-logger-panel .head:active {\n    background-color: #E5E5E5;\n}\n\n.tools-logger-panel > .close {\n    margin: 2px;\n}\n\n";
     var style = document.createElement("style");
     style.innerHTML = css;
     document.body.appendChild(style);

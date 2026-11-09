@@ -13,20 +13,20 @@ README 里说过本项目是「基于原版的增强包」，这里把**到底�
 
 ## 代码统计
 
-对原始 master 源码树做全量比对：**12 个文件改动，+572 行 / -0 行**（只增不删，原有功能代码全部保留）。
+对原始 master 源码树做全量比对：**12 个文件改动，+816 行 / -2 行**（除 `common.ts` 里两处样式数值外只增不删，原有功能代码全部保留）。
 
 | 文件 | 类型 | 行数 |
 |---|---|---|
 | `src/internal/app/ai.ts` | 🆕 新增 | +221 |
 | `src/tampermonkey/continue-watch.ts` | 🆕 新增 | +161 |
+| `src/internal/utils/log.ts` | 修改 | +135 |
+| `src/views/common.ts` | 修改 | +110 / -2 |
 | `src/internal/app/question.ts` | 修改 | +65 |
-| `src/mooc/chaoxing/question.ts` | 修改 | +26 |
 | `src/mooc/chaoxing/task.ts` | 修改 | +40 |
-| `src/views/common.ts` | 修改 | +19 |
-| `src/internal/utils/log.ts` | 修改 | +12 |
+| `src/mooc/chaoxing/question.ts` | 修改 | +26 |
 | `src/mooc/chaoxing/course.ts` | 修改 | +7 |
 | `src/tampermonkey/cxmooc-pack.ts` | 修改 | +6 |
-| `src/tampermonkey/{cxmooc,zhihuishu,course163}.js` | 修改 | +5 ×3 |
+| `src/tampermonkey/{cxmooc,zhihuishu,course163}.js` | 修改 | +15 ×3 |
 
 > 完整的改动源码见 [`userscript/src-patches/`](src-patches/)；每处改动的上下文说明见 [`userscript/SOURCE.md`](SOURCE.md)。
 
@@ -38,6 +38,7 @@ README 里说过本项目是「基于原版的增强包」，这里把**到底�
 | **检查更新** | 走 `cx.icodef.com` | 同样失效（面板里会显示「检查更新失败」） |
 | **视频暂停** | 只有「开始挂机」后每 5 秒 `play()` 一次；失焦弹出的「继续学习」需手动点 | 新增独立守卫：监听 `video` 的 `pause` 事件，**不依赖挂机开关**，700ms / 1.8s 两次尝试 `play()`；同时把标题改为 `【需继续】…` 供 AutoHotkey 读取 |
 | **界面布局** | 按钮条排在**视频正上方**，遮挡画面 | 移进右上角「小工具通知条」面板；面板关闭时按钮浮到右上角小条，不会丢 |
+| **AI 配置方式** | — | 通知条里新增「更改API」按钮（就地填接口地址 / Key / 模型）+「自动答题」开关；填完保存在浏览器本地，刷新不丢 |
 | **切换任务点** | 按钮各自挂在任务容器里，无副作用 | 挪到公共面板后需要去重：同一任务点重复创建只保留一组；切换章节时先清空上一批任务点的按钮 |
 | **配置项** | — | 新增 `ai_enable` / `ai_base` / `ai_key` / `ai_model` 四项，`ai_key` 默认为空字符串 |
 

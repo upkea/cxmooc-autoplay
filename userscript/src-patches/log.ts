@@ -95,6 +95,25 @@ export class PageLog implements Logger {
                </label>
                <span class="close" style="float:right; cursor:pointer; margin-right:5px;">x</span>
             </div>
+            <div class="tools-ai-bar" id="tools-ai-bar">
+               <button class="cx-btn tools-ai-btn" id="tools-ai-btn" title="填写接口地址 / API Key / 模型名称">更改API</button>
+               <label class="switch">
+                  <input class="checkbox-input" id="ai-auto-checkbox" type="checkbox">
+                  <label class="checkbox" for="ai-auto-checkbox"></label>
+                  <span>自动答题</span>
+               </label>
+               <span class="tools-ai-status" id="ai-status"></span>
+            </div>
+            <div class="tools-ai-form" id="tools-ai-form">
+               <div class="row"><span>接口地址</span><input id="ai-base-input" type="text" spellcheck="false" placeholder="https://api.deepseek.com/v1"></div>
+               <div class="row"><span>API Key</span><input id="ai-key-input" type="password" spellcheck="false" placeholder="sk-..."></div>
+               <div class="row"><span>模型名</span><input id="ai-model-input" type="text" spellcheck="false" placeholder="deepseek-chat"></div>
+               <div class="row tools-ai-actions">
+                  <button class="cx-btn" id="ai-save-btn">保存</button>
+                  <button class="cx-btn" id="ai-cancel-btn">取消</button>
+                  <span class="tools-ai-hint">不会填？看 docs/AI-GUIDE.md</span>
+               </div>
+            </div>
             <div class="tools-btn-bar" id="tools-btn-bar"></div>
             <div class="main">
                <div class="tools-notice-content"></div>
@@ -107,12 +126,19 @@ export class PageLog implements Logger {
             (<HTMLButtonElement>this.div.querySelector(".close")).onclick = () => {
                 // 面板关掉时，把按钮栏里的按钮挪到悬浮小条，避免"暂停挂机"点不到
                 let bar = <HTMLElement>this.div.querySelector("#tools-btn-bar");
-                if (bar && bar.children.length > 0) {
+                let aiBar = <HTMLElement>this.div.querySelector("#tools-ai-bar");
+                if ((bar && bar.children.length > 0) || aiBar) {
                     let holder = document.createElement("div");
                     holder.id = "tools-btn-float";
                     holder.style.cssText = "position:fixed;right:16px;top:130px;z-index:2147483000;background:#fff;border:1px solid #eee;border-radius:6px;box-shadow:0 2px 10px rgba(0,0,0,.18);padding:4px;display:flex;flex-wrap:wrap;gap:4px;max-width:220px;";
-                    while (bar.firstChild) {
-                        holder.appendChild(bar.firstChild);
+                    if (aiBar) {
+                        aiBar.style.cssText = "display:flex;flex-wrap:wrap;gap:4px;padding:0 0 4px;border-bottom:1px solid #eee;width:100%;";
+                        holder.appendChild(aiBar);
+                    }
+                    if (bar) {
+                        while (bar.firstChild) {
+                            holder.appendChild(bar.firstChild);
+                        }
                     }
                     document.body.appendChild(holder);
                 }
@@ -130,6 +156,103 @@ export class PageLog implements Logger {
                 self.is_notify = this.checked;
                 Application.App.config.SetConfig("is_notify", this.checked.toString());
             });
+
+            // ===== AI 答题：更改API 按钮 + 自动答题开关 =====
+            let readConf = (key: string, def: string): string => {
+                try {
+                    let v = Application.App.config.GetConfig(key, def);
+                    if (v === undefined || v === null || String(v).trim() === "") {
+                        return def;
+                    }
+                    return String(v).trim();
+                } catch (e) {
+                    return def;
+                }
+            };
+            let writeConf = (key: string, val: string) => {
+                try {
+                    Application.App.config.SetConfig(key, val);
+                } catch (e) {
+                    // ignore
+                }
+                // 额外记一份到 localStorage，刷新后由脚本头部恢复（否则会被默认配置覆盖）
+                try {
+                    let custom: any = {};
+                    try {
+                        custom = JSON.parse(localStorage.getItem("cx_ai_custom") || "{}") || {};
+                    } catch (e) {
+                        custom = {};
+                    }
+                    custom[key] = val;
+                    localStorage.setItem("cx_ai_custom", JSON.stringify(custom));
+                } catch (e) {
+                    // ignore
+                }
+            };
+            let aiBtn = <HTMLElement>this.div.querySelector("#tools-ai-btn");
+            let aiForm = <HTMLElement>this.div.querySelector("#tools-ai-form");
+            let aiBaseInput = <HTMLInputElement>this.div.querySelector("#ai-base-input");
+            let aiKeyInput = <HTMLInputElement>this.div.querySelector("#ai-key-input");
+            let aiModelInput = <HTMLInputElement>this.div.querySelector("#ai-model-input");
+            let aiAuto = <HTMLInputElement>this.div.querySelector("#ai-auto-checkbox");
+            let aiStatus = <HTMLElement>this.div.querySelector("#ai-status");
+
+            let fillAIApiForm = () => {
+                aiBaseInput.value = readConf("ai_base", "https://api.siliconflow.cn/v1");
+                aiKeyInput.value = readConf("ai_key", "");
+                aiModelInput.value = readConf("ai_model", "Qwen/Qwen2.5-7B-Instruct");
+            };
+            let refreshAIStatus = () => {
+                let on = readConf("ai_enable", "true") != "false";
+                let key = readConf("ai_key", "");
+                aiAuto.checked = on;
+                if (!on) {
+                    aiStatus.innerText = "自动答题：关";
+                    aiStatus.style.color = "#c33";
+                } else if (!key) {
+                    aiStatus.innerText = "未填 Key";
+                    aiStatus.style.color = "#c33";
+                } else {
+                    aiStatus.innerText = "已配置";
+                    aiStatus.style.color = "#3a9";
+                }
+            };
+            fillAIApiForm();
+            refreshAIStatus();
+
+            aiBtn.onclick = () => {
+                if (aiForm.style.display == "block") {
+                    aiForm.style.display = "none";
+                    return;
+                }
+                fillAIApiForm();
+                aiForm.style.display = "block";
+            };
+            (<HTMLElement>this.div.querySelector("#ai-save-btn")).onclick = () => {
+                let base = aiBaseInput.value.trim().replace(/\/+$/, "");
+                let key = aiKeyInput.value.trim();
+                let model = aiModelInput.value.trim();
+                if (base && base.indexOf("http") != 0) {
+                    base = "https://" + base;
+                }
+                writeConf("ai_base", base || "https://api.siliconflow.cn/v1");
+                writeConf("ai_key", key);
+                writeConf("ai_model", model || "Qwen/Qwen2.5-7B-Instruct");
+                aiForm.style.display = "none";
+                refreshAIStatus();
+                this.Info("AI 配置已保存：" + (base || "默认接口") + " / " +
+                    (model || "默认模型") + (key ? "" : "（Key 为空，自动答题不会生效）"));
+            };
+            (<HTMLElement>this.div.querySelector("#ai-cancel-btn")).onclick = () => {
+                aiForm.style.display = "none";
+                fillAIApiForm();
+            };
+            aiAuto.addEventListener("change", () => {
+                writeConf("ai_enable", aiAuto.checked ? "true" : "false");
+                refreshAIStatus();
+                this.Info(aiAuto.checked ? "自动答题已开启（用 AI 作答）" : "自动答题已关闭（改走原题库逻辑）");
+            });
+
             setTimeout(() => {
                 Application.CheckUpdate((isnew, data) => {
                     if (data == undefined) {

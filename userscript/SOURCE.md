@@ -180,6 +180,52 @@ if (btnBar) {
 ```
 
 
+## 6. 通知条里加 AI 设置：`更改API` 按钮 + `自动答题` 开关
+
+目标：不用改脚本源码、不用重装，直接在页面右上角的「小工具通知条」里配 AI。
+
+**`src/internal/utils/log.ts`** —— 面板结构里插两行（AI 栏 + 展开的填写表单），放在标题栏和任务按钮栏之间：
+
+```html
+<div class="tools-ai-bar" id="tools-ai-bar">
+   <button class="cx-btn tools-ai-btn" id="tools-ai-btn">更改API</button>
+   <label class="switch">
+      <input class="checkbox-input" id="ai-auto-checkbox" type="checkbox">
+      <label class="checkbox" for="ai-auto-checkbox"></label>
+      <span>自动答题</span>
+   </label>
+   <span class="tools-ai-status" id="ai-status"></span>
+</div>
+<div class="tools-ai-form" id="tools-ai-form">
+   <div class="row"><span>接口地址</span><input id="ai-base-input" type="text" placeholder="https://api.deepseek.com/v1"></div>
+   <div class="row"><span>API Key</span><input id="ai-key-input" type="password" placeholder="sk-..."></div>
+   <div class="row"><span>模型名</span><input id="ai-model-input" type="text" placeholder="deepseek-chat"></div>
+   <div class="row tools-ai-actions">
+      <button class="cx-btn" id="ai-save-btn">保存</button>
+      <button class="cx-btn" id="ai-cancel-btn">取消</button>
+      <span class="tools-ai-hint">不会填？看 docs/AI-GUIDE.md</span>
+   </div>
+</div>
+```
+
+行为：
+
+- 点「更改API」展开/收起表单，三个输入框自动带出当前值（`ai_base` / `ai_key` / `ai_model`）。
+- 点「保存」写配置：
+  ```ts
+  writeConf("ai_base", base);
+  writeConf("ai_key", key);
+  writeConf("ai_model", model);
+  ```
+  `writeConf` 内部做两件事：`Application.App.config.SetConfig(key, val)`（当前页面立即生效）+ `localStorage.setItem("cx_ai_custom", …)`（刷新后由脚本头部恢复）。
+- 「自动答题」开关写 `ai_enable`（`"true"` / `"false"`）。关掉后 `AIEnabled()` 返回 false，答题回落到原题库逻辑。
+- 状态文字（`#ai-status`）实时显示：`已配置` / `未填 Key` / `自动答题：关`。
+- 面板关闭（点 x）时，`#tools-ai-bar` 会连同任务按钮一起被搬进右上角的悬浮小条，不丢失。
+
+**`src/views/common.ts`** —— 补 `.tools-ai-bar` / `.tools-ai-form` / 输入框 / `.tools-ai-status` 的样式，并把面板 `max-height` 从 260px 提到 470px（多了一行 AI 栏 + 可展开的表单），日志区高度改为 200px。
+
+**脚本头部** —— 让面板里填的值在刷新后不被默认值覆盖，见 [`src-patches/cxmooc-js-diff.md`](src-patches/cxmooc-js-diff.md)：先把默认 `config` 写进 `localStorage`，再用 `cx_ai_custom` 里保存过的值覆盖回来。
+
 ## 构建
 
 ```bash
