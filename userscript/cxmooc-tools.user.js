@@ -5449,34 +5449,96 @@ var CxCourseTopic = /** @class */ (function (_super) {
         }
         return _super.prototype.QueryAnswer.call(this);
     };
-    // 在测试页文档里找提交/确认按钮（新版选择器和旧版都试，再按文字兜底）
-    CxCourseTopic.prototype.findBtn = function (doc, texts) {
-        var sels = [".Btn_blue_1", ".bluebtn", "#submitBtn", ".btnBlue", ".greenBtn", ".cy-btn", ".Zj_btn", ".submit", ".subBtn", ".mark_btn", "input[type=submit]"];
-        for (var i = 0; i < sels.length; i++) {
-            try {
-                var el = doc.querySelector(sels[i]);
-                if (el) {
-                    return el;
-                }
-            }
-            catch (e) {
-                // ignore
-            }
-        }
+    // 元素是否真的看得见（iframe 内也能判断）
+    CxCourseTopic.prototype.isVisible = function (el) {
         try {
-            var nodes = doc.querySelectorAll("a,button,span,.btn,div");
+            if (!el) {
+                return false;
+            }
+            var r = el.getBoundingClientRect();
+            if (r.width > 0 && r.height > 0) {
+                return true;
+            }
+            return el.offsetParent != null;
+        }
+        catch (e) {
+            return false;
+        }
+    };
+    // 找页面上的「提交」按钮：先按可见文字精确匹配，再退回旧选择器
+    CxCourseTopic.prototype.findSubmitBtn = function (doc) {
+        var want = /^(提交|交卷|提交答案|立即提交|提交作业|交卷并查看结果)$/;
+        var fallback = null;
+        try {
+            var nodes = doc.querySelectorAll("button,a,span,div,input[type=submit]");
             for (var i = 0; i < nodes.length; i++) {
                 var el = nodes[i];
-                var t = (el.innerText || el.textContent || "").trim();
-                if (texts.test(t)) {
+                var t = (el.innerText || el.value || el.textContent || "").trim();
+                if (!t || !want.test(t)) {
+                    continue;
+                }
+                if (!this.isVisible(el)) {
+                    continue;
+                }
+                var tag = (el.tagName || "").toUpperCase();
+                if (tag == "BUTTON" || el.type == "submit") {
                     return el;
+                }
+                if (!fallback) {
+                    fallback = el;
                 }
             }
         }
         catch (e) {
             // ignore
         }
+        if (fallback) {
+            return fallback;
+        }
+        // 旧版选择器兜底：排除「知道了/取消/关闭」这类别的按钮
+        var sels = [".Btn_blue_1", ".bluebtn", "#submitBtn", ".btnBlue", ".greenBtn"];
+        for (var i = 0; i < sels.length; i++) {
+            try {
+                var el = doc.querySelector(sels[i]);
+                if (el && this.isVisible(el)) {
+                    var t = (el.innerText || "").trim();
+                    if (!/^(知道了|取消|关闭|返回|×)$/.test(t)) {
+                        return el;
+                    }
+                }
+            }
+            catch (e) {
+                // ignore
+            }
+        }
         return null;
+    };
+    // 找确认弹窗里的「确定/确认」（不能匹配到主「提交」按钮，否则会重复点）
+    CxCourseTopic.prototype.findConfirmBtn = function (doc) {
+        var want = /^(确定|确认|确认提交|是|提交)$/;
+        var last = null;
+        try {
+            var nodes = doc.querySelectorAll("button,a,span,div");
+            for (var i = 0; i < nodes.length; i++) {
+                var el = nodes[i];
+                var t = (el.innerText || el.textContent || "").trim();
+                if (!t || !want.test(t)) {
+                    continue;
+                }
+                if (!this.isVisible(el)) {
+                    continue;
+                }
+                // 跳过最外层的整页容器（innerText 恰好是这两个字的大 div 不算）
+                if ((el.tagName || "").toUpperCase() == "BUTTON") {
+                    return el;
+                }
+                last = el;
+            }
+        }
+        catch (e) {
+            // ignore
+        }
+        return last;
     };
     CxCourseTopic.prototype.Submit = function () {
         var _this = this;
@@ -5486,10 +5548,9 @@ var CxCourseTopic = /** @class */ (function (_super) {
             var doc = _this.context.document;
             _this.context.setTimeout(function () {
                 try {
-                    // 第一步：点「交卷 / 提交」主按钮
-                    var submit = self.findBtn(doc, /^(交卷|提交|提交答案|确认|确认提交|立即提交|交作业)$/);
+                    var submit = self.findSubmitBtn(doc);
                     if (!submit) {
-                        application_1.Application.App.log.Warn("没找到提交按钮，请手动点页面上的「提交 / 交卷」");
+                        application_1.Application.App.log.Warn("没找到提交按钮，请手动点页面下方的「提交」");
                         return resolve("no_submit_btn");
                     }
                     application_1.Application.App.log.Info("点击提交按钮：" + String(submit.innerText || submit.tagName || ""));
@@ -5499,13 +5560,21 @@ var CxCourseTopic = /** @class */ (function (_super) {
                     catch (e) {
                         // ignore
                     }
-                    // 第二步：等确认框出来，点「确定」确认提交
+                    // 等确认框，再点「确定」
                     self.context.setTimeout(function () {
                         try {
-                            var confirm_1 = self.findBtn(doc, /^(确定|确认|是|提交|交卷|确认提交)$/);
+                            var confirm_1 = self.findConfirmBtn(doc);
                             if (confirm_1) {
-                                confirm_1.click();
-                                application_1.Application.App.log.Info("已点确认提交");
+                                application_1.Application.App.log.Info("点击确认按钮：" + String(confirm_1.innerText || ""));
+                                try {
+                                    confirm_1.click();
+                                }
+                                catch (e) {
+                                    // ignore
+                                }
+                            }
+                            else {
+                                application_1.Application.App.log.Info("没有确认框，可能已直接提交完成");
                             }
                             resolve(undefined);
                         }
