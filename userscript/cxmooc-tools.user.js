@@ -1015,7 +1015,7 @@ var ToolsQuestionBankFacade = /** @class */ (function () {
     // 用 AI 逐题作答（不经过题库）
     ToolsQuestionBankFacade.prototype.answerWithAI = function (callback) {
         return __awaiter(this, void 0, void 0, function () {
-            var list, i, status, interval, i, q, type, options, title, ret, correct, wantTrue, mapped, k, text, isTrue, isFalse, idx, answer, tmp, e_1;
+            var list, i, status, interval, i, q, type, options, title, ret, correct, wantTrue, mapped, k, text, isTrue, isFalse, idx, answer, tmp, e3_1, e_1;
             return __generator(this, function (_a) {
                 switch (_a.label) {
                     case 0:
@@ -1035,11 +1035,11 @@ var ToolsQuestionBankFacade = /** @class */ (function () {
                         i = 0;
                         _a.label = 1;
                     case 1:
-                        if (!(i < list.length)) return [3 /*break*/, 12];
+                        if (!(i < list.length)) return [3 /*break*/, 15];
                         q = list[i];
                         _a.label = 2;
                     case 2:
-                        _a.trys.push([2, 8, , 9]);
+                        _a.trys.push([2, 11, , 12]);
                         type = q.GetType();
                         options = [];
                         try {
@@ -1068,8 +1068,9 @@ var ToolsQuestionBankFacade = /** @class */ (function () {
                     case 4:
                         _a.sent();
                         _a.label = 5;
-                    case 5: return [3 /*break*/, 11];
+                    case 5: return [3 /*break*/, 14];
                     case 6:
+                        application_1.Application.App.log.Info("AI 回答：" + String(ret.raw || "").replace(/\s+/g, " ").slice(0, 60));
                         correct = ret.correct;
                         if (type == 3 && options.length > 0) {
                             wantTrue = !!ret.correct[0].option;
@@ -1102,9 +1103,21 @@ var ToolsQuestionBankFacade = /** @class */ (function () {
                             correct: correct,
                             Equal: function (content1, content2) { return utils_1.removeHTML(content1) == utils_1.removeHTML(content2); },
                         };
-                        return [4 /*yield*/, q.Fill(answer)];
+                        application_1.Application.App.log.Info("准备勾选：" + JSON.stringify(correct.map(function (v) { return v.option; })));
+                        tmp = void 0;
+                        _a.label = 7;
                     case 7:
+                        _a.trys.push([7, 9, , 10]);
+                        return [4 /*yield*/, q.Fill(answer)];
+                    case 8:
                         tmp = _a.sent();
+                        return [3 /*break*/, 10];
+                    case 9:
+                        e3_1 = _a.sent();
+                        application_1.Application.App.log.Warn("勾选答案失败：" + this.errText(e3_1));
+                        tmp = "no_match";
+                        return [3 /*break*/, 10];
+                    case 10:
                         if (tmp == "ok") {
                             q.SetStatus("ok");
                             application_1.Application.App.log.Info("AI 答案已填写：" + JSON.stringify(correct.map(function (v) { return v.option; })));
@@ -1112,30 +1125,41 @@ var ToolsQuestionBankFacade = /** @class */ (function () {
                         else {
                             status = this.randAnswer(status, tmp, q);
                         }
-                        return [3 /*break*/, 9];
-                    case 8:
+                        return [3 /*break*/, 12];
+                    case 11:
                         e_1 = _a.sent();
-                        application_1.Application.App.log.Warn("AI 答题异常（第 " + (i + 1) + " 题）：" + ((e_1 && e_1.message) ? e_1.message : e_1));
+                        application_1.Application.App.log.Warn("AI 答题异常（第 " + (i + 1) + " 题）：" + this.errText(e_1));
                         try {
                             status = this.randAnswer(status, "no_answer", q);
                         }
                         catch (e2) {
                             status = "incomplete";
                         }
-                        return [3 /*break*/, 9];
-                    case 9:
-                        if (!(i < list.length - 1)) return [3 /*break*/, 11];
+                        return [3 /*break*/, 12];
+                    case 12:
+                        if (!(i < list.length - 1)) return [3 /*break*/, 14];
                         return [4 /*yield*/, utils_1.Sleep(interval)];
-                    case 10:
+                    case 13:
                         _a.sent();
-                        _a.label = 11;
-                    case 11:
+                        _a.label = 14;
+                    case 14:
                         i++;
                         return [3 /*break*/, 1];
-                    case 12: return [2 /*return*/, callback(status)];
+                    case 15: return [2 /*return*/, callback(status)];
                 }
             });
         });
+    };
+    ToolsQuestionBankFacade.prototype.errText = function (e) {
+        try {
+            if (e && e.stack) {
+                return String(e.stack).split("\n").slice(0, 3).join(" | ").substring(0, 220);
+            }
+        }
+        catch (e2) {
+            // ignore
+        }
+        return (e && e.message) ? String(e.message) : String(e);
     };
     ToolsQuestionBankFacade.prototype.randAnswer = function (status, tmpStatus, question) {
         if (application_1.Application.App.config.rand_answer) {
@@ -4113,10 +4137,28 @@ var cxSelectQuestion = /** @class */ (function (_super) {
         return res;
     };
     cxSelectQuestion.prototype.click = function (el, content) {
+        if (!el) {
+            return;
+        }
         var ipt = el.querySelector("label > input,input");
         if (ipt) {
             if (!ipt.checked) {
-                ipt.click();
+                try {
+                    ipt.click();
+                }
+                catch (e) {
+                    // 页面脚本可能抛错，忽略
+                }
+                if (!ipt.checked) {
+                    // 兜底：直接改 checked 再派发事件，绕过页面的 click 处理
+                    try {
+                        ipt.checked = true;
+                        ipt.dispatchEvent(new Event("change", { bubbles: true }));
+                    }
+                    catch (e) {
+                        // ignore
+                    }
+                }
             }
         }
         else {
@@ -4127,7 +4169,12 @@ var cxSelectQuestion = /** @class */ (function (_super) {
                 // ignore
             }
         }
-        this.AddNotice(this.getOption(el) + ":" + content);
+        try {
+            this.AddNotice(this.getOption(el) + ":" + content);
+        }
+        catch (e) {
+            // ignore
+        }
     };
     cxSelectQuestion.prototype.Random = function () {
         var options = this.options();

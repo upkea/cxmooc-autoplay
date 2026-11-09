@@ -392,6 +392,7 @@ export class ToolsQuestionBankFacade implements QuestionBankFacade {
                     }
                     continue;
                 }
+                Application.App.log.Info("AI 回答：" + String(ret.raw || "").replace(/\s+/g, " ").slice(0, 60));
 
                 // 判断题：AI 给的是「对/错」，要换成这道题自己的选项值，不然对不上
                 let correct = ret.correct;
@@ -429,7 +430,14 @@ export class ToolsQuestionBankFacade implements QuestionBankFacade {
                     Equal: (content1: string, content2: string) => removeHTML(content1) == removeHTML(content2),
                 };
 
-                const tmp = await q.Fill(answer);
+                Application.App.log.Info("准备勾选：" + JSON.stringify(correct.map(v => v.option)));
+                let tmp: any;
+                try {
+                    tmp = await q.Fill(answer);
+                } catch (e3) {
+                    Application.App.log.Warn("勾选答案失败：" + this.errText(e3));
+                    tmp = "no_match";
+                }
                 if (tmp == "ok") {
                     q.SetStatus("ok");
                     Application.App.log.Info("AI 答案已填写：" + JSON.stringify(correct.map(v => v.option)));
@@ -437,7 +445,7 @@ export class ToolsQuestionBankFacade implements QuestionBankFacade {
                     status = this.randAnswer(status, tmp, q);
                 }
             } catch (e) {
-                Application.App.log.Warn("AI 答题异常（第 " + (i + 1) + " 题）：" + ((e && e.message) ? e.message : e));
+                Application.App.log.Warn("AI 答题异常（第 " + (i + 1) + " 题）：" + this.errText(e));
                 try {
                     status = this.randAnswer(status, "no_answer", q);
                 } catch (e2) {
@@ -449,6 +457,17 @@ export class ToolsQuestionBankFacade implements QuestionBankFacade {
             }
         }
         return callback(status);
+    }
+
+    protected errText(e: any): string {
+        try {
+            if (e && e.stack) {
+                return String(e.stack).split("\n").slice(0, 3).join(" | ").substring(0, 220);
+            }
+        } catch (e2) {
+            // ignore
+        }
+        return (e && e.message) ? String(e.message) : String(e);
     }
 
     protected randAnswer(status: QuestionStatus, tmpStatus: TopicStatus, question: Question): QuestionStatus {

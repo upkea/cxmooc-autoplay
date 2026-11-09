@@ -306,10 +306,26 @@ class cxSelectQuestion extends cxQuestion implements Question {
     }
 
     protected click(el: HTMLElement, content: string) {
+        if (!el) {
+            return;
+        }
         let ipt = <HTMLInputElement>el.querySelector("label > input,input");
         if (ipt) {
             if (!ipt.checked) {
-                ipt.click();
+                try {
+                    ipt.click();
+                } catch (e) {
+                    // 页面脚本可能抛错，忽略
+                }
+                if (!ipt.checked) {
+                    // 兜底：直接改 checked 再派发事件，绕过页面的 click 处理
+                    try {
+                        ipt.checked = true;
+                        ipt.dispatchEvent(new Event("change", {bubbles: true}));
+                    } catch (e) {
+                        // ignore
+                    }
+                }
             }
         } else {
             try {
@@ -318,7 +334,11 @@ class cxSelectQuestion extends cxQuestion implements Question {
                 // ignore
             }
         }
-        this.AddNotice(this.getOption(el) + ":" + content);
+        try {
+            this.AddNotice(this.getOption(el) + ":" + content);
+        } catch (e) {
+            // ignore
+        }
     }
 
     public Random(): TopicStatus {
