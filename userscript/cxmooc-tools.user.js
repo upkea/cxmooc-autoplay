@@ -501,10 +501,11 @@ function CaptureQuestionImage(el) {
                 }
                 catch (e) { /* ignore */ }
                 rect = {
-                    x: Math.max(0, Math.round(offX + r.left + scrollX)),
-                    y: Math.max(0, Math.round(offY + r.top + scrollY)),
-                    width: Math.min(Math.max(Math.round(r.width), 1), 1200),
-                    height: Math.min(Math.max(Math.round(r.height), 1), 1600),
+                    x: Math.max(0, Math.round(offX + r.left + scrollX - 12)),
+                    y: Math.max(0, Math.round(offY + r.top + scrollY - 8)),
+                    // 四周留白：题目卡片常常比元素本身高（选项在下方），截大一点保证选项齐全
+                    width: Math.min(Math.max(Math.round(r.width + 24), 400), 1200),
+                    height: Math.min(Math.max(Math.round(r.height + 220), 380), 1600),
                 };
             }
             catch (e) {
