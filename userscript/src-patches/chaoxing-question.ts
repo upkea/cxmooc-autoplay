@@ -5,6 +5,7 @@ import {
     TopicStatusString,
     TopicType,
     SwitchTopicType,
+    GuessTopicType,
     Option,
     Answer,
     PushAnswer
@@ -57,8 +58,15 @@ function visibleText(root: Node): string {
 //TODO: 优化
 export class CxQuestionFactory {
     public static CreateCourseQuestion(context: any, el: HTMLElement): Question {
-        let ret = SwitchTopicType(substrex(el.innerText, '【', '】'));
-        return this.CreateCourseQuestionByTopicType(context, ret, el);
+        let type = SwitchTopicType(substrex(el.innerText, '【', '】'));
+        if (type == null) {
+            type = GuessTopicType(el);
+        }
+        if (type == null) {
+            this.AddNotice(el, "不支持的类型");
+            return null;
+        }
+        return this.CreateCourseQuestionByTopicType(context, type, el);
     }
 
     public static CreateExamQuestion(context: any, type: TopicType, el: HTMLElement): Question {
@@ -125,8 +133,19 @@ export class CxQuestionFactory {
     }
 
     public static CreateHomeWorkQuestion(context: any, el: HTMLElement): Question {
-        let ret = CxQuestionFactory.getBeforeType(el);
-        return this.CreateCourseQuestionByTopicType(context, SwitchTopicType(substrex(ret.innerText, ".", "（")), el);
+        let before = CxQuestionFactory.getBeforeType(el);
+        let type = before ? SwitchTopicType(substrex(before.innerText, ".", "（")) : null;
+        if (type == null) {
+            type = SwitchTopicType(substrex(el.innerText, '【', '】'));
+        }
+        if (type == null) {
+            type = GuessTopicType(el);
+        }
+        if (type == null) {
+            this.AddNotice(el, "不支持的类型");
+            return null;
+        }
+        return this.CreateCourseQuestionByTopicType(context, type, el);
     }
 
     //TODO:写的什么玩意啊

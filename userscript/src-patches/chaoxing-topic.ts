@@ -3,6 +3,7 @@ import {createBtn} from "@App/internal/utils/utils";
 import {Application} from "@App/internal/application";
 import {
     SwitchTopicType,
+    GuessTopicType,
     Question,
     QuestionBankFacade, QuestionStatus, QuestionStatusString
 } from "@App/internal/app/question";
@@ -413,8 +414,13 @@ export class ExamTopic extends Topic implements QueryQuestions {
 
     public QueryQuestions(): Question[] {
         let current = document.querySelector(".current");
-        let topicType = SwitchTopicType((<HTMLElement>current.parentElement.previousElementSibling).innerText);
-        let question = CxQuestionFactory.CreateExamQuestion(window, topicType, document.querySelector(".leftContent.TiMu"));
+        let titleEl = <HTMLElement>(current && current.parentElement && current.parentElement.previousElementSibling);
+        let topicType = titleEl ? SwitchTopicType(titleEl.innerText) : null;
+        let tEl = <HTMLElement>document.querySelector(".leftContent.TiMu");
+        if (topicType == null && tEl) {
+            topicType = GuessTopicType(tEl);
+        }
+        let question = CxQuestionFactory.CreateExamQuestion(window, topicType, tEl);
         let ret = new Array();
         if (question == null) {
             return ret;

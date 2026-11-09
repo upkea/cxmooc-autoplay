@@ -81,23 +81,74 @@ export function QuestionStatusString(status: QuestionStatus): string {
 }
 
 export function SwitchTopicType(title: string): TopicType {
-    switch (title) {
-        case "单选题": {
+    if (!title) {
+        return null;
+    }
+    let t = String(title);
+    let norm = t.replace(/\s+/g, "");
+    switch (norm) {
+        case "单选题":
+        case "单选":
+        case "单项选择题": {
             return 1;
         }
-        case "多选题": {
+        case "多选题":
+        case "多选":
+        case "多项选择题": {
             return 2;
         }
-        case "判断题": {
+        case "判断题":
+        case "判断": {
             return 3;
         }
-        case "填空题": {
+        case "填空题":
+        case "填空":
+        case "简答题":
+        case "名词解释":
+        case "论述题": {
             return 4;
         }
         default: {
+            // 兜底：截取开头两个字判断（页面有时带序号等前缀）
+            let head = norm.slice(0, 4);
+            if (head.indexOf("单选") >= 0) {
+                return 1;
+            }
+            if (head.indexOf("多选") >= 0) {
+                return 2;
+            }
+            if (head.indexOf("判断") >= 0) {
+                return 3;
+            }
+            if (head.indexOf("填空") >= 0 || head.indexOf("简答") >= 0 || head.indexOf("论述") >= 0) {
+                return 4;
+            }
             return null;
         }
     }
+}
+
+// 按页面 DOM 结构推断题型：没有题型标题时的兜底
+// 单选：radio 一组；多选：checkbox 一组；判断：两个 radio（对/错）；填空：input/textarea
+export function GuessTopicType(el: HTMLElement): TopicType {
+    try {
+        let root = el || document.body;
+        let checkbox = root.querySelectorAll('input[type="checkbox"]');
+        let radio = root.querySelectorAll('input[type="radio"]');
+        let input = root.querySelectorAll('input[type="text"],input[type="input"],textarea');
+        if (checkbox.length > 0 && radio.length == 0) {
+            return 2;
+        }
+        if (radio.length > 0) {
+            return radio.length <= 2 ? 3 : 1;
+        }
+        if (input.length > 0) {
+            return 4;
+        }
+    } catch (e) {
+        // ignore
+    }
+    return null;
 }
 
 export type QuestionStatus = "success" | "network" | "incomplete" | "processing";
