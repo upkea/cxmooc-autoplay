@@ -509,19 +509,34 @@ export class ToolsQuestionBankFacade implements QuestionBankFacade {
                                 let typeName = type == 1 ? "单选题" : (type == 2 ? "多选题" : (type == 3 ? "判断题" : "填空题"));
                                 let vr = await AskAIVision(
                                     img,
-                                    "图片是一道中文" + typeName + "的题目截图（页面有字体保护，但图片里显示的文字是真实的）。" +
-                                    "请仔细阅读图片中的题干和选项，判断正确答案。" +
-                                    "只输出正确选项的字母：" +
-                                    (type == 3 ? "A 表示「对」，B 表示「错」。" : "多选题输出多个字母如 AB；单选题只输出一个字母。") +
-                                    "不要输出任何解释。"
+                                    "图片是一道中文" + typeName + "的题目截图（页面有字体保护，图片里显示的文字是真实的）。" +
+                                    "请仔细阅读图片中的题干和所有选项，先在内心分析每个选项是否正确，再给出答案。" +
+                                    "最后单独一行输出：答案：X" +
+                                    (type == 3 ? "（A 表示对，B 表示错，只输出一个字母）" : (type == 2 ? "（多选输出多个字母，如 答案：ABD）" : "（单选题只输出一个字母）")) +
+                                    "。除了最后一行，不要输出其他内容。"
                                 );
                                 if (vr.ok && vr.text) {
-                                    let txt = String(vr.text).toUpperCase();
+                                    let txt = String(vr.text);
+                                    // 优先解析「答案：X」
                                     let letters: string[] = [];
-                                    let m = txt.match(/[A-H]/g) || [];
-                                    for (let mi = 0; mi < m.length; mi++) {
-                                        if (letters.indexOf(m[mi]) < 0) {
-                                            letters.push(m[mi]);
+                                    let mAns = txt.match(/答案\s*[:：]?\s*([A-Ha-h][A-Ha-h\s,，、]*)/);
+                                    if (mAns && mAns[1]) {
+                                        let mm = mAns[1].toUpperCase().match(/[A-H]/g) || [];
+                                        for (let mi = 0; mi < mm.length; mi++) {
+                                            if (letters.indexOf(mm[mi]) < 0) {
+                                                letters.push(mm[mi]);
+                                            }
+                                        }
+                                    }
+                                    if (letters.length == 0) {
+                                        // 兜底：取最后一行里的字母
+                                        let lines = txt.split(/\r?\n/).map((s: string) => s.trim()).filter((s: string) => s.length > 0);
+                                        let last = lines.length > 0 ? lines[lines.length - 1] : txt;
+                                        let mm = String(last).toUpperCase().match(/[A-H]/g) || [];
+                                        for (let mi = 0; mi < mm.length; mi++) {
+                                            if (letters.indexOf(mm[mi]) < 0) {
+                                                letters.push(mm[mi]);
+                                            }
                                         }
                                     }
                                     if (type == 1 || type == 3) {

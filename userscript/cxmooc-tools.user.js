@@ -462,7 +462,7 @@ function VisionConfig() {
     return {
         base: base,
         key: cfg("ai_vision_key", "") || ai.key,
-        model: cfg("ai_vision_model", "glm-4v-flash"),
+        model: cfg("ai_vision_model", "glm-4.1v-thinking-flash"),
     };
 }
 exports.VisionConfig = VisionConfig;
@@ -526,83 +526,118 @@ function CaptureQuestionImage(el) {
 }
 exports.CaptureQuestionImage = CaptureQuestionImage;
 // 用视觉模型读题：图片 + 提示词 → 回答文本
+// 依次尝试配置的模型 → glm-4.1v-thinking-flash（免费思考型，推理强）→ glm-4v-flash
 function AskAIVision(imageDataUrl, prompt) {
     var _this = this;
+    var conf = VisionConfig();
+    var models = [];
+    var pushModel = function (m) {
+        if (m && models.indexOf(m) < 0) {
+            models.push(m);
+        }
+    };
+    pushModel(conf.model);
+    pushModel("glm-4.1v-thinking-flash");
+    pushModel("glm-4v-flash");
     return new Promise(function (resolve) {
-        var conf = VisionConfig();
         if (!conf.key) {
             resolve({ ok: false, error: "视觉模型未配置 Key" });
             return;
         }
         var url = conf.base + "/chat/completions";
-        var body = JSON.stringify({
-            model: conf.model,
-            temperature: 0,
-            max_tokens: 64,
-            messages: [{
-                    role: "user",
-                    content: [
-                        { type: "text", text: prompt },
-                        { type: "image_url", image_url: { url: imageDataUrl } },
-                    ],
-                }],
-        });
-        var finish = function (r) { return resolve(r); };
-        try {
-            var gx = window.GM_xmlhttpRequest;
-            if (typeof gx == "function") {
-                gx({
-                    method: "POST",
-                    url: url,
-                    headers: { "Content-Type": "application/json", "Authorization": "Bearer " + conf.key },
-                    data: body,
-                    timeout: 40000,
-                    onload: function (resp) {
-                        try {
-                            var j = JSON.parse(resp.responseText);
-                            var content = (j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || "";
-                            if (!content) {
-                                finish({ ok: false, error: "空回复 HTTP " + resp.status });
-                                return;
-                            }
-                            finish({ ok: true, text: String(content) });
-                        }
-                        catch (e) {
-                            finish({ ok: false, error: "解析失败 HTTP " + resp.status });
-                        }
-                    },
-                    onerror: function () { return finish({ ok: false, error: "网络错误" }); },
-                    ontimeout: function () { return finish({ ok: false, error: "超时" }); },
-                });
+        var idx = 0;
+        var lastErr = "";
+        var tryNext = function () {
+            if (idx >= models.length) {
+                resolve({ ok: false, error: lastErr || "视觉模型全部失败" });
                 return;
             }
-            fetch(url, {
-                method: "POST",
-                headers: { "Content-Type": "application/json", "Authorization": "Bearer " + conf.key },
-                body: body,
-            }).then(function (r) { return __awaiter(_this, void 0, void 0, function () {
-                var text, j, content;
-                return __generator(this, function (_a) {
-                    switch (_a.label) {
-                        case 0: return [4 /*yield*/, r.text()];
-                        case 1:
-                            text = _a.sent();
+            var model = models[idx++];
+            var body = JSON.stringify({
+                model: model,
+                temperature: 0,
+                max_tokens: 200,
+                messages: [{
+                        role: "user",
+                        content: [
+                            { type: "text", text: prompt },
+                            { type: "image_url", image_url: { url: imageDataUrl } },
+                        ],
+                    }],
+            });
+            var onSuccess = function (content) {
+                if (!content || !content.trim()) {
+                    lastErr = "空回复(" + model + ")";
+                    tryNext();
+                    return;
+                }
+                resolve({ ok: true, text: String(content) });
+            };
+            var onErr = function (msg) {
+                lastErr = msg + "(" + model + ")";
+                tryNext();
+            };
+            try {
+                var gx = window.GM_xmlhttpRequest;
+                if (typeof gx == "function") {
+                    gx({
+                        method: "POST",
+                        url: url,
+                        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + conf.key },
+                        data: body,
+                        timeout: 60000,
+                        onload: function (resp) {
                             try {
-                                j = JSON.parse(text);
-                                content = (j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || "";
-                                finish(content ? { ok: true, text: String(content) } : { ok: false, error: "空回复 HTTP " + r.status });
+                                var j = JSON.parse(resp.responseText);
+                                if (j && j.error) {
+                                    onErr("接口错误 " + (j.error.code || "") + " " + (j.error.message || ""));
+                                    return;
+                                }
+                                var content = (j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || "";
+                                onSuccess(String(content));
                             }
                             catch (e) {
-                                finish({ ok: false, error: "解析失败 HTTP " + r.status });
+                                onErr("解析失败 HTTP " + resp.status);
                             }
-                            return [2 /*return*/];
-                    }
-                });
-            }); }).catch(function () { return finish({ ok: false, error: "网络错误" }); });
-        }
-        catch (e) {
-            finish({ ok: false, error: String(e) });
-        }
+                        },
+                        onerror: function () { return onErr("网络错误"); },
+                        ontimeout: function () { return onErr("超时"); },
+                    });
+                    return;
+                }
+                fetch(url, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", "Authorization": "Bearer " + conf.key },
+                    body: body,
+                }).then(function (r) { return __awaiter(_this, void 0, void 0, function () {
+                    var text, j, content;
+                    return __generator(this, function (_a) {
+                        switch (_a.label) {
+                            case 0: return [4 /*yield*/, r.text()];
+                            case 1:
+                                text = _a.sent();
+                                try {
+                                    j = JSON.parse(text);
+                                    if (j && j.error) {
+                                        onErr("接口错误 " + (j.error.code || "") + " " + (j.error.message || ""));
+                                        return [2 /*return*/];
+                                    }
+                                    content = (j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || "";
+                                    onSuccess(String(content));
+                                }
+                                catch (e) {
+                                    onErr("解析失败 HTTP " + r.status);
+                                }
+                                return [2 /*return*/];
+                        }
+                    });
+                }); }).catch(function () { return onErr("网络错误"); });
+            }
+            catch (e) {
+                onErr(String(e));
+            }
+        };
+        tryNext();
     });
 }
 exports.AskAIVision = AskAIVision;
@@ -1323,7 +1358,7 @@ var ToolsQuestionBankFacade = /** @class */ (function () {
     // 用 AI 逐题作答（不经过题库）
     ToolsQuestionBankFacade.prototype.answerWithAI = function (callback) {
         return __awaiter(this, void 0, void 0, function () {
-            var list, i, status, interval, i, q, type, options, title, parts, k, ret, el, img, typeName, vr, txt, letters, m, mi, e_1, r2, r3, voted, e_2, rate, wrong, correct, wantTrue, mapped, k, text, isTrue, isFalse, idx, answer, tmp, e3_1, e_3;
+            var list, i, status, interval, i, q, type, options, title, parts, k, ret, el, img, typeName, vr, txt, letters, mAns, mm, mi, lines, last, mm, mi, e_1, r2, r3, voted, e_2, rate, wrong, correct, wantTrue, mapped, k, text, isTrue, isFalse, idx, answer, tmp, e3_1, e_3;
             return __generator(this, function (_a) {
                 switch (_a.label) {
                     case 0:
@@ -1405,20 +1440,33 @@ var ToolsQuestionBankFacade = /** @class */ (function () {
                         img = _a.sent();
                         if (!img) return [3 /*break*/, 6];
                         typeName = type == 1 ? "单选题" : (type == 2 ? "多选题" : (type == 3 ? "判断题" : "填空题"));
-                        return [4 /*yield*/, ai_1.AskAIVision(img, "图片是一道中文" + typeName + "的题目截图（页面有字体保护，但图片里显示的文字是真实的）。" +
-                                "请仔细阅读图片中的题干和选项，判断正确答案。" +
-                                "只输出正确选项的字母：" +
-                                (type == 3 ? "A 表示「对」，B 表示「错」。" : "多选题输出多个字母如 AB；单选题只输出一个字母。") +
-                                "不要输出任何解释。")];
+                        return [4 /*yield*/, ai_1.AskAIVision(img, "图片是一道中文" + typeName + "的题目截图（页面有字体保护，图片里显示的文字是真实的）。" +
+                                "请仔细阅读图片中的题干和所有选项，先在内心分析每个选项是否正确，再给出答案。" +
+                                "最后单独一行输出：答案：X" +
+                                (type == 3 ? "（A 表示对，B 表示错，只输出一个字母）" : (type == 2 ? "（多选输出多个字母，如 答案：ABD）" : "（单选题只输出一个字母）")) +
+                                "。除了最后一行，不要输出其他内容。")];
                     case 5:
                         vr = _a.sent();
                         if (vr.ok && vr.text) {
-                            txt = String(vr.text).toUpperCase();
+                            txt = String(vr.text);
                             letters = [];
-                            m = txt.match(/[A-H]/g) || [];
-                            for (mi = 0; mi < m.length; mi++) {
-                                if (letters.indexOf(m[mi]) < 0) {
-                                    letters.push(m[mi]);
+                            mAns = txt.match(/答案\s*[:：]?\s*([A-Ha-h][A-Ha-h\s,，、]*)/);
+                            if (mAns && mAns[1]) {
+                                mm = mAns[1].toUpperCase().match(/[A-H]/g) || [];
+                                for (mi = 0; mi < mm.length; mi++) {
+                                    if (letters.indexOf(mm[mi]) < 0) {
+                                        letters.push(mm[mi]);
+                                    }
+                                }
+                            }
+                            if (letters.length == 0) {
+                                lines = txt.split(/\r?\n/).map(function (s) { return s.trim(); }).filter(function (s) { return s.length > 0; });
+                                last = lines.length > 0 ? lines[lines.length - 1] : txt;
+                                mm = String(last).toUpperCase().match(/[A-H]/g) || [];
+                                for (mi = 0; mi < mm.length; mi++) {
+                                    if (letters.indexOf(mm[mi]) < 0) {
+                                        letters.push(mm[mi]);
+                                    }
                                 }
                             }
                             if (type == 1 || type == 3) {

@@ -73,7 +73,7 @@ export function VisionConfig(): { base: string, key: string, model: string } {
     return {
         base: base,
         key: cfg("ai_vision_key", "") || ai.key,
-        model: cfg("ai_vision_model", "glm-4v-flash"),
+        model: cfg("ai_vision_model", "glm-4.1v-thinking-flash"),
     };
 }
 
@@ -139,71 +139,106 @@ export interface VisionResult {
 }
 
 // 用视觉模型读题：图片 + 提示词 → 回答文本
+// 依次尝试配置的模型 → glm-4.1v-thinking-flash（免费思考型，推理强）→ glm-4v-flash
 export function AskAIVision(imageDataUrl: string, prompt: string): Promise<VisionResult> {
+    const conf = VisionConfig();
+    const models: string[] = [];
+    const pushModel = (m: string) => {
+        if (m && models.indexOf(m) < 0) {
+            models.push(m);
+        }
+    };
+    pushModel(conf.model);
+    pushModel("glm-4.1v-thinking-flash");
+    pushModel("glm-4v-flash");
     return new Promise<VisionResult>((resolve) => {
-        const conf = VisionConfig();
         if (!conf.key) {
             resolve({ok: false, error: "视觉模型未配置 Key"});
             return;
         }
         const url = conf.base + "/chat/completions";
-        const body = JSON.stringify({
-            model: conf.model,
-            temperature: 0,
-            max_tokens: 64,
-            messages: [{
-                role: "user",
-                content: [
-                    {type: "text", text: prompt},
-                    {type: "image_url", image_url: {url: imageDataUrl}},
-                ],
-            }],
-        });
-        const finish = (r: VisionResult) => resolve(r);
-        try {
-            let gx = (<any>window).GM_xmlhttpRequest;
-            if (typeof gx == "function") {
-                gx({
-                    method: "POST",
-                    url: url,
-                    headers: {"Content-Type": "application/json", "Authorization": "Bearer " + conf.key},
-                    data: body,
-                    timeout: 40000,
-                    onload: (resp: any) => {
-                        try {
-                            const j = JSON.parse(resp.responseText);
-                            const content = (j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || "";
-                            if (!content) {
-                                finish({ok: false, error: "空回复 HTTP " + resp.status});
-                                return;
-                            }
-                            finish({ok: true, text: String(content)});
-                        } catch (e) {
-                            finish({ok: false, error: "解析失败 HTTP " + resp.status});
-                        }
-                    },
-                    onerror: () => finish({ok: false, error: "网络错误"}),
-                    ontimeout: () => finish({ok: false, error: "超时"}),
-                });
+        let idx = 0;
+        let lastErr = "";
+        const tryNext = () => {
+            if (idx >= models.length) {
+                resolve({ok: false, error: lastErr || "视觉模型全部失败"});
                 return;
             }
-            fetch(url, {
-                method: "POST",
-                headers: {"Content-Type": "application/json", "Authorization": "Bearer " + conf.key},
-                body: body,
-            }).then(async (r) => {
-                const text = await r.text();
-                try {
-                    const j = JSON.parse(text);
-                    const content = (j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || "";
-                    finish(content ? {ok: true, text: String(content)} : {ok: false, error: "空回复 HTTP " + r.status});
-                } catch (e) {
-                    finish({ok: false, error: "解析失败 HTTP " + r.status});
+            const model = models[idx++];
+            const body = JSON.stringify({
+                model: model,
+                temperature: 0,
+                max_tokens: 200,
+                messages: [{
+                    role: "user",
+                    content: [
+                        {type: "text", text: prompt},
+                        {type: "image_url", image_url: {url: imageDataUrl}},
+                    ],
+                }],
+            });
+            const onSuccess = (content: string) => {
+                if (!content || !content.trim()) {
+                    lastErr = "空回复(" + model + ")";
+                    tryNext();
+                    return;
                 }
-            }).catch(() => finish({ok: false, error: "网络错误"}));
-        } catch (e) {
-            finish({ok: false, error: String(e)});
-        }
+                resolve({ok: true, text: String(content)});
+            };
+            const onErr = (msg: string) => {
+                lastErr = msg + "(" + model + ")";
+                tryNext();
+            };
+            try {
+                let gx = (<any>window).GM_xmlhttpRequest;
+                if (typeof gx == "function") {
+                    gx({
+                        method: "POST",
+                        url: url,
+                        headers: {"Content-Type": "application/json", "Authorization": "Bearer " + conf.key},
+                        data: body,
+                        timeout: 60000,
+                        onload: (resp: any) => {
+                            try {
+                                const j = JSON.parse(resp.responseText);
+                                if (j && j.error) {
+                                    onErr("接口错误 " + (j.error.code || "") + " " + (j.error.message || ""));
+                                    return;
+                                }
+                                const content = (j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || "";
+                                onSuccess(String(content));
+                            } catch (e) {
+                                onErr("解析失败 HTTP " + resp.status);
+                            }
+                        },
+                        onerror: () => onErr("网络错误"),
+                        ontimeout: () => onErr("超时"),
+                    });
+                    return;
+                }
+                fetch(url, {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json", "Authorization": "Bearer " + conf.key},
+                    body: body,
+                }).then(async (r) => {
+                    const text = await r.text();
+                    try {
+                        const j = JSON.parse(text);
+                        if (j && j.error) {
+                            onErr("接口错误 " + (j.error.code || "") + " " + (j.error.message || ""));
+                            return;
+                        }
+                        const content = (j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || "";
+                        onSuccess(String(content));
+                    } catch (e) {
+                        onErr("解析失败 HTTP " + r.status);
+                    }
+                }).catch(() => onErr("网络错误"));
+            } catch (e) {
+                onErr(String(e));
+            }
+        };
+        tryNext();
     });
 }
 
