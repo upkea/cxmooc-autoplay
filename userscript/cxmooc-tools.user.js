@@ -466,42 +466,39 @@ function VisionConfig() {
     };
 }
 exports.VisionConfig = VisionConfig;
-// 截取页面元素区域（需要桌面版的 cxCapture 桥）
+// 截取页面元素区域（桌面版会放大 2 倍截图，文字更清晰）
+var captureSeq = 0;
 function CaptureQuestionImage(el) {
     return new Promise(function (resolve) {
         try {
-            var w_1 = window;
-            if (typeof w_1.cxCapture !== "function") {
+            var w = window;
+            if (typeof w.cxCapture !== "function") {
                 resolve(null);
                 return;
             }
+            var id = "cxq" + (++captureSeq);
             try {
-                el.scrollIntoView({ block: "center" });
+                el.setAttribute("data-cxq", id);
             }
             catch (e) {
-                // ignore
+                resolve(null);
+                return;
             }
-            setTimeout(function () {
+            w.cxCapture({ id: id })
+                .then(function (res) {
                 try {
-                    var r = el.getBoundingClientRect();
-                    var rect = {
-                        x: Math.max(0, r.left),
-                        y: Math.max(0, r.top),
-                        width: Math.min(Math.max(r.width, 1), 1400),
-                        height: Math.min(Math.max(r.height, 1), 1800),
-                    };
-                    if (rect.width < 60 || rect.height < 30) {
-                        resolve(null);
-                        return;
-                    }
-                    w_1.cxCapture(rect)
-                        .then(function (res) { return resolve(res && res.dataUrl ? res.dataUrl : null); })
-                        .catch(function () { return resolve(null); });
+                    el.removeAttribute("data-cxq");
                 }
-                catch (e) {
-                    resolve(null);
+                catch (e) { /* ignore */ }
+                resolve(res && res.dataUrl ? res.dataUrl : null);
+            })
+                .catch(function () {
+                try {
+                    el.removeAttribute("data-cxq");
                 }
-            }, 400);
+                catch (e) { /* ignore */ }
+                resolve(null);
+            });
         }
         catch (e) {
             resolve(null);
@@ -1389,8 +1386,11 @@ var ToolsQuestionBankFacade = /** @class */ (function () {
                         img = _a.sent();
                         if (!img) return [3 /*break*/, 6];
                         typeName = type == 1 ? "单选题" : (type == 2 ? "多选题" : (type == 3 ? "判断题" : "填空题"));
-                        return [4 /*yield*/, ai_1.AskAIVision(img, "图片是一道中文" + typeName + "。请阅读图片中的题目和选项，直接输出正确答案的选项字母" +
-                                "(多选题输出多个字母如 AB；判断题 A=对、B=错；填空题输出答案文字)。只输出答案，不要解释。")];
+                        return [4 /*yield*/, ai_1.AskAIVision(img, "图片是一道中文" + typeName + "的题目截图（页面有字体保护，但图片里显示的文字是真实的）。" +
+                                "请仔细阅读图片中的题干和选项，判断正确答案。" +
+                                "只输出正确选项的字母：" +
+                                (type == 3 ? "A 表示「对」，B 表示「错」。" : "多选题输出多个字母如 AB；单选题只输出一个字母。") +
+                                "不要输出任何解释。")];
                     case 5:
                         vr = _a.sent();
                         if (vr.ok && vr.text) {

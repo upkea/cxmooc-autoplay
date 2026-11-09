@@ -509,8 +509,11 @@ export class ToolsQuestionBankFacade implements QuestionBankFacade {
                                 let typeName = type == 1 ? "单选题" : (type == 2 ? "多选题" : (type == 3 ? "判断题" : "填空题"));
                                 let vr = await AskAIVision(
                                     img,
-                                    "图片是一道中文" + typeName + "。请阅读图片中的题目和选项，直接输出正确答案的选项字母" +
-                                    "(多选题输出多个字母如 AB；判断题 A=对、B=错；填空题输出答案文字)。只输出答案，不要解释。"
+                                    "图片是一道中文" + typeName + "的题目截图（页面有字体保护，但图片里显示的文字是真实的）。" +
+                                    "请仔细阅读图片中的题干和选项，判断正确答案。" +
+                                    "只输出正确选项的字母：" +
+                                    (type == 3 ? "A 表示「对」，B 表示「错」。" : "多选题输出多个字母如 AB；单选题只输出一个字母。") +
+                                    "不要输出任何解释。"
                                 );
                                 if (vr.ok && vr.text) {
                                     let txt = String(vr.text).toUpperCase();

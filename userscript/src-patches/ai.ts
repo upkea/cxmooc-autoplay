@@ -77,7 +77,8 @@ export function VisionConfig(): { base: string, key: string, model: string } {
     };
 }
 
-// 截取页面元素区域（需要桌面版的 cxCapture 桥）
+// 截取页面元素区域（桌面版会放大 2 倍截图，文字更清晰）
+let captureSeq = 0;
 export function CaptureQuestionImage(el: HTMLElement): Promise<string> {
     return new Promise<string>((resolve) => {
         try {
@@ -86,31 +87,26 @@ export function CaptureQuestionImage(el: HTMLElement): Promise<string> {
                 resolve(null);
                 return;
             }
+            let id = "cxq" + (++captureSeq);
             try {
-                el.scrollIntoView({block: "center"});
+                el.setAttribute("data-cxq", id);
             } catch (e) {
-                // ignore
+                resolve(null);
+                return;
             }
-            setTimeout(() => {
-                try {
-                    const r = el.getBoundingClientRect();
-                    const rect = {
-                        x: Math.max(0, r.left),
-                        y: Math.max(0, r.top),
-                        width: Math.min(Math.max(r.width, 1), 1400),
-                        height: Math.min(Math.max(r.height, 1), 1800),
-                    };
-                    if (rect.width < 60 || rect.height < 30) {
-                        resolve(null);
-                        return;
-                    }
-                    w.cxCapture(rect)
-                        .then((res: any) => resolve(res && res.dataUrl ? res.dataUrl : null))
-                        .catch(() => resolve(null));
-                } catch (e) {
+            w.cxCapture({id: id})
+                .then((res: any) => {
+                    try {
+                        el.removeAttribute("data-cxq");
+                    } catch (e) { /* ignore */ }
+                    resolve(res && res.dataUrl ? res.dataUrl : null);
+                })
+                .catch(() => {
+                    try {
+                        el.removeAttribute("data-cxq");
+                    } catch (e) { /* ignore */ }
                     resolve(null);
-                }
-            }, 400);
+                });
         } catch (e) {
             resolve(null);
         }
