@@ -11,6 +11,7 @@ export interface AIResult {
     correct: Option[];
     raw?: string;
     error?: string;
+    vision?: boolean;
 }
 
 function cfg(key: string, def: string): string {
@@ -40,6 +41,155 @@ export function AIEnabled(): boolean {
     } catch (e) {
         return false;
     }
+}
+
+// ===== 视觉读题（绕过超星字体加密的终极方案）=====
+// 页面文字被加密字体混淆时，直接截取题目区域图片发给视觉模型读题。
+// 默认用智谱 glm-4v-flash（免费）；可用 ai_vision_enabled / ai_vision_base / ai_vision_key / ai_vision_model 覆盖。
+
+export function VisionEnabled(): boolean {
+    try {
+        if (!AIEnabled()) {
+            return false;
+        }
+        return cfg("ai_vision_enabled", "true") != "false";
+    } catch (e) {
+        return false;
+    }
+}
+
+export function VisionConfig(): { base: string, key: string, model: string } {
+    const ai = AIConfig();
+    let base = cfg("ai_vision_base", "").replace(/\/+$/, "");
+    if (!base) {
+        base = ai.base;
+        // 智谱接口的视觉模型：base 换成智谱
+        if (/bigmodel\.cn/i.test(base)) {
+            base = base.replace(/\/api\/paas\/v4.*$/, "/api/paas/v4");
+        } else if (!/bigmodel\.cn/i.test(base)) {
+            base = "https://open.bigmodel.cn/api/paas/v4";
+        }
+    }
+    return {
+        base: base,
+        key: cfg("ai_vision_key", "") || ai.key,
+        model: cfg("ai_vision_model", "glm-4v-flash"),
+    };
+}
+
+// 截取页面元素区域（需要桌面版的 cxCapture 桥）
+export function CaptureQuestionImage(el: HTMLElement): Promise<string> {
+    return new Promise<string>((resolve) => {
+        try {
+            const w: any = window;
+            if (typeof w.cxCapture !== "function") {
+                resolve(null);
+                return;
+            }
+            try {
+                el.scrollIntoView({block: "center"});
+            } catch (e) {
+                // ignore
+            }
+            setTimeout(() => {
+                try {
+                    const r = el.getBoundingClientRect();
+                    const rect = {
+                        x: Math.max(0, r.left),
+                        y: Math.max(0, r.top),
+                        width: Math.min(Math.max(r.width, 1), 1400),
+                        height: Math.min(Math.max(r.height, 1), 1800),
+                    };
+                    if (rect.width < 60 || rect.height < 30) {
+                        resolve(null);
+                        return;
+                    }
+                    w.cxCapture(rect)
+                        .then((res: any) => resolve(res && res.dataUrl ? res.dataUrl : null))
+                        .catch(() => resolve(null));
+                } catch (e) {
+                    resolve(null);
+                }
+            }, 400);
+        } catch (e) {
+            resolve(null);
+        }
+    });
+}
+
+export interface VisionResult {
+    ok: boolean;
+    text?: string;
+    error?: string;
+}
+
+// 用视觉模型读题：图片 + 提示词 → 回答文本
+export function AskAIVision(imageDataUrl: string, prompt: string): Promise<VisionResult> {
+    return new Promise<VisionResult>((resolve) => {
+        const conf = VisionConfig();
+        if (!conf.key) {
+            resolve({ok: false, error: "视觉模型未配置 Key"});
+            return;
+        }
+        const url = conf.base + "/chat/completions";
+        const body = JSON.stringify({
+            model: conf.model,
+            temperature: 0,
+            max_tokens: 64,
+            messages: [{
+                role: "user",
+                content: [
+                    {type: "text", text: prompt},
+                    {type: "image_url", image_url: {url: imageDataUrl}},
+                ],
+            }],
+        });
+        const finish = (r: VisionResult) => resolve(r);
+        try {
+            let gx = (<any>window).GM_xmlhttpRequest;
+            if (typeof gx == "function") {
+                gx({
+                    method: "POST",
+                    url: url,
+                    headers: {"Content-Type": "application/json", "Authorization": "Bearer " + conf.key},
+                    data: body,
+                    timeout: 40000,
+                    onload: (resp: any) => {
+                        try {
+                            const j = JSON.parse(resp.responseText);
+                            const content = (j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || "";
+                            if (!content) {
+                                finish({ok: false, error: "空回复 HTTP " + resp.status});
+                                return;
+                            }
+                            finish({ok: true, text: String(content)});
+                        } catch (e) {
+                            finish({ok: false, error: "解析失败 HTTP " + resp.status});
+                        }
+                    },
+                    onerror: () => finish({ok: false, error: "网络错误"}),
+                    ontimeout: () => finish({ok: false, error: "超时"}),
+                });
+                return;
+            }
+            fetch(url, {
+                method: "POST",
+                headers: {"Content-Type": "application/json", "Authorization": "Bearer " + conf.key},
+                body: body,
+            }).then(async (r) => {
+                const text = await r.text();
+                try {
+                    const j = JSON.parse(text);
+                    const content = (j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || "";
+                    finish(content ? {ok: true, text: String(content)} : {ok: false, error: "空回复 HTTP " + r.status});
+                } catch (e) {
+                    finish({ok: false, error: "解析失败 HTTP " + r.status});
+                }
+            }).catch(() => finish({ok: false, error: "网络错误"}));
+        } catch (e) {
+            finish({ok: false, error: String(e)});
+        }
+    });
 }
 
 function typeText(type: TopicType): string {

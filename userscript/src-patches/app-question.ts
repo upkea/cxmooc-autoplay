@@ -1,7 +1,7 @@
 import {HttpUtils, removeHTML, randNumber, Sleep} from "../utils/utils";
 import {SystemConfig} from "@App/config";
 import {Application} from "../application";
-import {AIEnabled, AskAI, AIResult} from "./ai";
+import {AIEnabled, AskAI, AIResult, VisionEnabled, VisionConfig, CaptureQuestionImage, AskAIVision} from "./ai";
 
 export interface Topic {
     topic: string
@@ -472,7 +472,12 @@ export class ToolsQuestionBankFacade implements QuestionBankFacade {
                 } catch (e) {
                     title = "";
                 }
-                Application.App.log.Info("AI 答题中（" + (i + 1) + "/" + list.length + "）：" + title.substring(0, 40));
+                // 诊断日志：视觉读题模式下不打印原始（可能加密的）题目文字
+                if (VisionEnabled()) {
+                    Application.App.log.Info("AI 答题中（" + (i + 1) + "/" + list.length + "）：题型 " + (type == 1 ? "单选" : (type == 2 ? "多选" : (type == 3 ? "判断" : "填空"))) + "，选项 " + options.length + " 个（视觉读题模式）");
+                } else {
+                    Application.App.log.Info("AI 答题中（" + (i + 1) + "/" + list.length + "）：" + title.substring(0, 40));
+                }
                 // 诊断：把实际发给 AI 的选项打出来（内容为空说明页面没取到选项文字）
                 try {
                     if (options.length > 0) {
@@ -488,9 +493,61 @@ export class ToolsQuestionBankFacade implements QuestionBankFacade {
                     // ignore
                 }
 
-                let ret = await AskAI(title, type, options);
+                // 视觉读题优先：页面文字被字体加密时，截图直接让视觉模型读（最可靠）
+                let ret: AIResult = null;
+                if (VisionEnabled()) {
+                    try {
+                        let el: HTMLElement = null;
+                        try {
+                            el = (q as any).GetElement ? (q as any).GetElement() : null;
+                        } catch (e) {
+                            el = null;
+                        }
+                        if (el) {
+                            let img = await CaptureQuestionImage(el);
+                            if (img) {
+                                let typeName = type == 1 ? "单选题" : (type == 2 ? "多选题" : (type == 3 ? "判断题" : "填空题"));
+                                let vr = await AskAIVision(
+                                    img,
+                                    "图片是一道中文" + typeName + "。请阅读图片中的题目和选项，直接输出正确答案的选项字母" +
+                                    "(多选题输出多个字母如 AB；判断题 A=对、B=错；填空题输出答案文字)。只输出答案，不要解释。"
+                                );
+                                if (vr.ok && vr.text) {
+                                    let txt = String(vr.text).toUpperCase();
+                                    let letters: string[] = [];
+                                    let m = txt.match(/[A-H]/g) || [];
+                                    for (let mi = 0; mi < m.length; mi++) {
+                                        if (letters.indexOf(m[mi]) < 0) {
+                                            letters.push(m[mi]);
+                                        }
+                                    }
+                                    if (type == 1 || type == 3) {
+                                        letters = letters.slice(0, 1);
+                                    }
+                                    if (letters.length > 0) {
+                                        Application.App.log.Info("视觉读题答案：" + letters.join("") + "（" + String(vr.text).slice(0, 30) + "）");
+                                        if (type == 3) {
+                                            // 判断题：A=对(true) B=错(false)，后续统一转换逻辑会映射到题目自己的选项值
+                                            ret = {ok: true, correct: [{option: <any>(letters[0] == "A"), content: ""}], raw: "vision:" + letters.join(""), vision: true};
+                                        } else {
+                                            ret = {ok: true, correct: letters.map((l) => ({option: l, content: ""})), raw: "vision:" + letters.join(""), vision: true};
+                                        }
+                                    }
+                                } else if (vr.error) {
+                                    Application.App.log.Warn("视觉读题失败：" + vr.error + "（回退文字模式）");
+                                }
+                            }
+                        }
+                    } catch (e) {
+                        // ignore
+                    }
+                }
+                if (!ret || !ret.ok) {
+                    ret = await AskAI(title, type, options);
+                }
                 // 单选题/多选题/判断题：再问一次做交叉验证；两次不一致就问第三次投票
-                if ((type == 1 || type == 2 || type == 3) && ret.ok) {
+                // （视觉结果已是最可靠来源，不再做文字复核，避免不同来源互相稀释）
+                if (!ret.vision && (type == 1 || type == 2 || type == 3) && ret.ok) {
                     try {
                         let r2 = await AskAI(title, type, options);
                         if (this.sameAIResult(ret, r2)) {

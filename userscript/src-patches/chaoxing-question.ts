@@ -239,6 +239,11 @@ abstract class cxQuestion implements Question {
         this.processor = processor;
     }
 
+    // 供「视觉读题」截图用
+    public GetElement(): HTMLElement {
+        return this.el;
+    }
+
     public abstract Random(): TopicStatus;
 
     public abstract Correct(): Answer;

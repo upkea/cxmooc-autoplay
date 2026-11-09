@@ -78,6 +78,99 @@ function firstFamilyName(fontFamily: string): string {
 // 每道新题只对没见过的字做 Canvas 比对（又快又不漏题）。
 let charMapCache: { [family: string]: { [garbled: string]: string } } = {};
 let candidateCache: { [font: string]: Array<{ ch: string, bits: string }> } = {};
+let explicitFontSeq = 0;
+
+// 从页面样式表里提取指定家族的 @font-face 数据，注册成唯一名字并验证可用。
+// 返回可用的字体名（用于 canvas），失败返回 null。
+async function tryLoadPageFont(doc: Document, win: any, family: string, targets: string[]): Promise<string> {
+    try {
+        let datas: string[] = [];
+        let collect = (css: string) => {
+            let blocks = css.match(/@font-face\s*\{[^}]*\}/g) || [];
+            for (let b = 0; b < blocks.length; b++) {
+                let block = blocks[b];
+                let fam = (block.match(/font-family\s*:\s*['"]?([^'"；;}]+)/) || [])[1] || "";
+                if (fam.toLowerCase().indexOf(family.toLowerCase()) < 0) {
+                    continue;
+                }
+                let b64 = block.match(/base64,([^'")\s;]+)/);
+                if (b64) {
+                    datas.push("data:font/ttf;base64," + b64[1]);
+                    continue;
+                }
+                let url = (block.match(/url\(\s*['"]?([^'")]+)['"]?\s*\)/) || [])[1];
+                if (url) {
+                    datas.push(url);
+                }
+            }
+        };
+        try {
+            let styles = doc.querySelectorAll("style");
+            for (let i = 0; i < styles.length; i++) {
+                collect(styles[i].textContent || "");
+            }
+        } catch (e) { /* ignore */ }
+        try {
+            let sheets = doc.styleSheets;
+            for (let i = 0; i < sheets.length; i++) {
+                let rules: any = null;
+                try {
+                    rules = (<any>sheets[i]).cssRules;
+                } catch (e) {
+                    rules = null;
+                }
+                if (!rules) {
+                    continue;
+                }
+                let text = "";
+                for (let j = 0; j < rules.length; j++) {
+                    text += ((rules[j] && rules[j].cssText) || "") + "\n";
+                }
+                collect(text);
+            }
+        } catch (e) { /* ignore */ }
+        try {
+            console.log("[CXFONT] candidate font datas: " + datas.length);
+        } catch (e) { /* ignore */ }
+        if (datas.length == 0) {
+            return null;
+        }
+        let FF: any = (<any>win).FontFace || (<any>window).FontFace;
+        if (!FF) {
+            return null;
+        }
+        // 从后往前试（页面最新的字体定义通常在后面）
+        for (let di = datas.length - 1; di >= 0; di--) {
+            let name = "cxfontdec" + (++explicitFontSeq);
+            try {
+                let ff = new FF(name, "url(" + datas[di] + ")");
+                doc.fonts.add(ff);
+                await ff.load();
+            } catch (e) {
+                continue;
+            }
+            // 验证：用这个字体渲染几个目标字，不能全空白
+            let ok = 0;
+            for (let ti = 0; ti < Math.min(8, targets.length); ti++) {
+                try {
+                    let bits = glyphBits(doc, targets[ti], name);
+                    if (bitCount(bits) >= 6) {
+                        ok++;
+                    }
+                } catch (e) { /* ignore */ }
+            }
+            try {
+                console.log("[CXFONT] font#" + di + " verify ok=" + ok + "/" + Math.min(8, targets.length));
+            } catch (e) { /* ignore */ }
+            if (ok >= Math.min(3, targets.length)) {
+                return '"' + name + '"';
+            }
+        }
+    } catch (e) {
+        // ignore
+    }
+    return null;
+}
 
 export async function DecodeChaoxingFont(win: any): Promise<boolean> {
     try {
@@ -137,12 +230,13 @@ export async function DecodeChaoxingFont(win: any): Promise<boolean> {
         let tHashes: { [k: string]: string } = {};
         let blankCount = 0;
         let sampleText = String(els[0].textContent || "").slice(0, 100);
+        let renderFont = quoted;
         for (let attempt = 0; attempt < 4; attempt++) {
             try {
                 let fonts: any = doc.fonts;
                 if (fonts && typeof fonts.load === "function") {
                     await Promise.race([
-                        fonts.load("28px " + quoted, sampleText),
+                        fonts.load("28px " + renderFont, sampleText),
                         new Promise((res) => setTimeout(res, 1200)),
                     ]);
                 }
@@ -153,7 +247,7 @@ export async function DecodeChaoxingFont(win: any): Promise<boolean> {
             blankCount = 0;
             for (let i = 0; i < targets.length; i++) {
                 try {
-                    let bits = glyphBits(doc, targets[i], quoted);
+                    let bits = glyphBits(doc, targets[i], renderFont);
                     tHashes[targets[i]] = bits;
                     if (bitCount(bits) < 6) {
                         blankCount++;
@@ -167,6 +261,18 @@ export async function DecodeChaoxingFont(win: any): Promise<boolean> {
             } catch (e) { /* ignore */ }
             if (blankCount <= targets.length * 0.5) {
                 break;
+            }
+            // 关键：同一字体家族在多次换页后会注册多个实例，环境里的可能不是当前页的。
+            // 直接从当前页样式表里提取 font-cxsecret 的字体数据，自己注册一个唯一名字再渲染。
+            if (attempt == 0) {
+                let loaded = await tryLoadPageFont(doc, win, family, targets);
+                if (loaded) {
+                    renderFont = loaded;
+                    try {
+                        console.log("[CXFONT] using explicit font instance: " + loaded);
+                    } catch (e) { /* ignore */ }
+                    continue;
+                }
             }
             await new Promise((res) => setTimeout(res, 500));
         }
