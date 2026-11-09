@@ -853,9 +853,49 @@ function SwitchTopicType(title) {
 exports.SwitchTopicType = SwitchTopicType;
 // 按页面 DOM 结构推断题型：没有题型标题时的兜底
 // 单选：radio 一组；多选：checkbox 一组；判断：两个 radio（对/错）；填空：input/textarea
+// 另外向上找分类标题（「一. 单选题（共1题）」），很多新版页面选项不是 input 元素
 function GuessTopicType(el) {
     try {
         var root = el || document.body;
+        // 0) 先看自身文字里有没有题型标记
+        var selfText = String(root.innerText || "").slice(0, 80);
+        if (/多选题|多选/.test(selfText)) {
+            return 2;
+        }
+        if (/判断题|判断/.test(selfText)) {
+            return 3;
+        }
+        if (/填空题|填空/.test(selfText)) {
+            return 4;
+        }
+        if (/单选题|单选/.test(selfText)) {
+            return 1;
+        }
+        // 1) 向上找分类标题
+        var node = root;
+        for (var depth = 0; depth < 8 && node; depth++) {
+            var prev = node.previousElementSibling;
+            var guard = 0;
+            while (prev && guard < 6) {
+                var t = String(prev.innerText || "").slice(0, 40);
+                if (/多选题|多选/.test(t)) {
+                    return 2;
+                }
+                if (/判断题|判断/.test(t)) {
+                    return 3;
+                }
+                if (/填空题|填空/.test(t)) {
+                    return 4;
+                }
+                if (/单选题|单选/.test(t)) {
+                    return 1;
+                }
+                prev = prev.previousElementSibling;
+                guard++;
+            }
+            node = node.parentElement;
+        }
+        // 2) 按控件类型判断
         var checkbox = root.querySelectorAll('input[type="checkbox"]');
         var radio = root.querySelectorAll('input[type="radio"]');
         var input = root.querySelectorAll('input[type="text"],input[type="input"],textarea');
@@ -4183,28 +4223,27 @@ var __generator = (this && this.__generator) || function (thisArg, body) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.DecodeChaoxingFont = void 0;
-// 学习通「字体加密」解密（第三版，稳妥优先）
+// 学习通「字体加密」解密（第四版：直接用页面已加载的加密字体）
 //
-// 学习通防作弊字体的真实形态（两种都可能出现）：
-//   A. DOM 里是错别字（例如「揵悻」实为「抽象」），靠 @font-face 加密字体把错误码点
-//      渲染成正确字形。此时 innerText 是错字，必须用 Glyph 对比还原成正确文字。
-//   B. DOM 里本来就是正确文字，只是被换成乱序字体显示——去掉类名即可。
-//
-// 判断依据：用加密字体渲染目标字符 vs 用系统字体渲染同一字符，字形差异是否显著。
-//   - 差异显著 → 字体在重映射 → 走 Canvas 对比还原（乱码字用加密字体、候选字用系统字体、
-//     按 32x32 二值图汉明距离最近匹配，距离超过阈值的不替换）；
-//   - 差异不显著且文字是普通汉字 → 情况 B，去掉 encrypt 类名；
-//   - 字体拿不到 / 数据无效 / 匹配失败 → 什么都不做，绝不破坏页面原貌。
+// 机制：DOM 里存的是打乱后的字符，页面用 @font-face("font-cxsecret") 把每个错误码点
+// 渲染成正确字形。所以：
+//   1. 不能删 .font-cxsecret 类名（删了页面就显示乱码）——除非已经成功替换成正确文字；
+//   2. 解密 = 用页面自己的字体（已注册在 document.fonts，canvas 可直接引用）渲染乱码字，
+//      和系统字体渲染的候选字做 32x32 字形比对，取最近距离；
+//   3. 严格模式：解析成功率不足或匹配质量差时，什么都不做，页面保持原样。
 var application_1 = __webpack_require__(/*! @App/internal/application */ "./src/internal/application.ts");
-var FONT_NAME = "cxfontdec";
 var SYS_FONT = '"Microsoft YaHei", "SimHei", "PingFang SC", sans-serif';
 var COMMON_CHARS = "的一是在不了有和人这中大为上个国我以要他时来用们生到作地于出就分对成会可主发年动同工也能下过子说产种面而方后多定行学法所民得经十三之进着等部度家电力里如水化高自二理起小物实现加量都两体制机当使点从业本去把性好应开它合还因由其些然前外天政四日那社义事平形相全表间样与关各重新线内数正心反你明看原又么利比或但质气第向道命此变条只没结解问意建月公无系军很情者最立代想已通并提直题党程展五果料象员革位入常文总次品式活设及管特件长求老头基资边流路级少图山统接知较将组见计别她手角期根论运农指几九区强放决西被干做必战先回则任取据处队南给色光门即保治北造百规热领七海口东导器压志世金增争济阶油思术极交受联什认六共权收证改清己美再采转更单风切打白教速花带安场身车例真务具万每目至达走积示议声报斗完类八离华名确才科张信马节话米整空元况今集温传土许步群广石记需段研界拉林律叫且究观越织装影算低持音众书布复容儿须际商非验连断深难近千周委素技备半办青省列习响约支般史感劳便团往酸历市克何除消构府称太准精值号率族维划选标写存候毛亲快效斯院查江型眼王按格养易置派层片始却专状育厂京识适属圆包火住调满县局照参红细引听该铁价严龙飞" +
     "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz" +
-    "，。、；：？！“”‘’（）《》〈〉【】[]{}·—…%＋－×÷＝√（）+-×÷=%/\\.,;:!?_*&#@" +
-    "一二三四五六七八九十百千万亿年月日时分秒甲乙丙丁戊己庚辛壬癸子丑寅卯辰巳午未申酉戌亥";
+    "，。、；：？！“”‘’（）《》〈〉【】[]{}·—…%＋－×－×÷＝√/*#@&";
+var CANDIDATE_FONTS = [
+    '"SimSun", "宋体", serif',
+    '"SimHei", "黑体", sans-serif',
+    '"KaiTi", "楷体", serif',
+    SYS_FONT,
+];
 var _canvas = null;
 var _ctx = null;
-// 用指定字体渲染一个字符，返回 32x32 二值化字形指纹
 function glyphBits(doc, ch, fontFamily) {
     if (!_canvas) {
         _canvas = doc.createElement("canvas");
@@ -4244,109 +4283,45 @@ function hamDist(a, b) {
     }
     return n + Math.abs(a.length - b.length);
 }
-function isPrivateUse(ch) {
-    var c = ch.charCodeAt(0);
-    return (c >= 0xE000 && c <= 0xF8FF) || (c >= 0xF0000 && c <= 0x10FFFF);
+// 取出元素实际使用的第一个字体名（去掉引号）
+function firstFamilyName(fontFamily) {
+    var f = String(fontFamily || "").split(",")[0] || "";
+    f = f.replace(/['"]/g, "").trim();
+    return f;
 }
-// 从 @font-face 里提取 base64 数据（有专门 base64 则优先）
-function pickBase64(cssText) {
-    var m = cssText.match(/base64,([^'")\s;]+)/);
-    return m ? m[1] : null;
-}
-// 提取加密字体：优先匹配元素的 font-family；返回 data: 或 http(s) URL
-function extractFontData(doc, win, els) {
-    var wantedFamily = "";
-    try {
-        if (els && els.length > 0) {
-            var cs = win.getComputedStyle(els[0]);
-            wantedFamily = String(cs && cs.fontFamily ? cs.fontFamily : "").toLowerCase();
-        }
-    }
-    catch (e) {
-        wantedFamily = "";
-    }
-    var candidates = [];
-    var addFromCss = function (css) {
-        var blocks = css.match(/@font-face\s*\{[^}]*\}/g) || [];
-        for (var b = 0; b < blocks.length; b++) {
-            var block = blocks[b];
-            var fam = (block.match(/font-family\s*:\s*['"]?([^'"；;}]+)/) || [])[1] || "";
-            var b64 = pickBase64(block);
-            if (b64) {
-                candidates.push({ family: fam.toLowerCase(), src: "data:font/ttf;base64," + b64 });
-                continue;
-            }
-            var url = (block.match(/url\(\s*['"]?([^'")]+)['"]?\s*\)/) || [])[1];
-            if (url) {
-                candidates.push({ family: fam.toLowerCase(), src: url });
-            }
-        }
-    };
-    // 1) 内联 <style>
-    try {
-        var styles = doc.querySelectorAll("style");
-        for (var i = 0; i < styles.length; i++) {
-            addFromCss(styles[i].textContent || "");
-        }
-    }
-    catch (e) {
-        // ignore
-    }
-    // 2) cssRules
-    try {
-        var sheets = doc.styleSheets;
-        for (var i = 0; i < sheets.length; i++) {
-            var rules = null;
-            try {
-                rules = sheets[i].cssRules;
-            }
-            catch (e) {
-                rules = null;
-            }
-            if (!rules) {
-                continue;
-            }
-            var text = "";
-            for (var j = 0; j < rules.length; j++) {
-                text += ((rules[j] && rules[j].cssText) || "") + "\n";
-            }
-            addFromCss(text);
-        }
-    }
-    catch (e) {
-        // ignore
-    }
-    if (candidates.length == 0) {
-        return null;
-    }
-    // 优先 family 匹配
-    if (wantedFamily) {
-        for (var i = 0; i < candidates.length; i++) {
-            var fam = candidates[i].family.replace(/['"]/g, "").trim();
-            if (fam && wantedFamily.indexOf(fam) >= 0) {
-                return candidates[i].src;
-            }
-        }
-    }
-    return candidates[0].src;
-}
+// 字形缓存：同一字体家族下，已还原的「乱码字→正确字」映射全局复用，
+// 每道新题只对没见过的字做 Canvas 比对（又快又不漏题）。
+var charMapCache = {};
+var candidateCache = {};
 function DecodeChaoxingFont(win) {
     return __awaiter(this, void 0, Promise, function () {
-        var doc, els, targets, seen, i, t, k, ch, puaCount, i, fontData, fontLoaded, FF, ff, e_1, sample, remap, checked, encHashes, i, ch, be, bs, isRemap, i, el, tHashes, blankAll, i, bits, resolved, ti, t, targetBits, bestChar, bestDist, ci, ch, bits, dist, done, uniqVals, k, uniqCount, k, i, el, text, t, e_2;
+        var doc_1, els, family, cs, targets, seen, i, t, k, ch, fonts, e_1, quoted, tHashes, blankCount, i, bits, getTable, cache, newCount, ti, t, targetBits, bestChar, bestDist, fi, table, ci, dist, done, ti, rate, i, el, text, t, e_2;
         return __generator(this, function (_a) {
             switch (_a.label) {
                 case 0:
-                    _a.trys.push([0, 5, , 6]);
-                    doc = win && win.document;
-                    if (!doc) {
+                    _a.trys.push([0, 6, , 7]);
+                    doc_1 = win && win.document;
+                    if (!doc_1) {
                         return [2 /*return*/, false];
                     }
-                    els = doc.querySelectorAll(".font-cxsecret");
+                    els = doc_1.querySelectorAll(".font-cxsecret");
                     if (!els || els.length == 0) {
                         return [2 /*return*/, false];
                     }
-                    if (win.__cxFontDecodeDone) {
-                        return [2 /*return*/, true];
+                    family = "";
+                    try {
+                        cs = win.getComputedStyle(els[0]);
+                        family = firstFamilyName(String((cs && cs.fontFamily) || ""));
+                    }
+                    catch (e) {
+                        family = "";
+                    }
+                    try {
+                        console.log("[CXFONT] enter family=" + family + " els=" + els.length);
+                    }
+                    catch (e) { /* ignore */ }
+                    if (!family) {
+                        return [2 /*return*/, false];
                     }
                     targets = [];
                     seen = {};
@@ -4363,161 +4338,136 @@ function DecodeChaoxingFont(win) {
                     if (targets.length == 0) {
                         return [2 /*return*/, false];
                     }
-                    puaCount = 0;
-                    for (i = 0; i < targets.length; i++) {
-                        if (isPrivateUse(targets[i])) {
-                            puaCount++;
-                        }
-                    }
-                    fontData = extractFontData(doc, win, els);
-                    fontLoaded = false;
-                    if (!fontData) return [3 /*break*/, 4];
-                    FF = win.FontFace || window.FontFace;
-                    if (!FF) return [3 /*break*/, 4];
                     _a.label = 1;
                 case 1:
-                    _a.trys.push([1, 3, , 4]);
-                    ff = new FF(FONT_NAME, "url(" + fontData + ")");
-                    doc.fonts.add(ff);
-                    return [4 /*yield*/, ff.load()];
+                    _a.trys.push([1, 4, , 5]);
+                    fonts = doc_1.fonts;
+                    if (!(fonts && fonts.ready)) return [3 /*break*/, 3];
+                    return [4 /*yield*/, Promise.race([fonts.ready, new Promise(function (res) { return setTimeout(res, 2000); })])];
                 case 2:
                     _a.sent();
-                    fontLoaded = true;
-                    return [3 /*break*/, 4];
+                    _a.label = 3;
                 case 3:
-                    e_1 = _a.sent();
-                    application_1.Application.App.log.Warn("加密字体加载失败：" + ((e_1 && e_1.message) ? e_1.message : e_1));
-                    return [3 /*break*/, 4];
-                case 4:
-                    sample = targets.slice(0, 40);
-                    remap = 0;
-                    checked = 0;
-                    encHashes = {};
-                    if (fontLoaded) {
-                        for (i = 0; i < sample.length; i++) {
-                            ch = sample[i];
-                            try {
-                                be = glyphBits(doc, ch, FONT_NAME);
-                                bs = glyphBits(doc, ch, SYS_FONT);
-                                encHashes[ch] = be;
-                                if (bitCount(be) >= 6) {
-                                    checked++;
-                                    if (hamDist(be, bs) > 60) {
-                                        remap++;
-                                    }
-                                }
-                            }
-                            catch (e) {
-                                // ignore
-                            }
-                        }
-                    }
-                    isRemap = fontLoaded && checked > 0 && remap >= Math.max(1, checked * 0.3);
-                    // 情况 B：字体没在重映射 + 文字是普通汉字 → 只是显示字体被换，去掉类名即可
-                    if (!isRemap && puaCount == 0) {
-                        for (i = 0; i < els.length; i++) {
-                            el = els[i];
-                            el.classList.remove("font-cxsecret");
-                        }
-                        win.__cxFontDecodeDone = true;
-                        application_1.Application.App.log.Info("字体加密未生效（文字本身正常），已去掉乱序字体类名");
-                        return [2 /*return*/, true];
-                    }
-                    if (!isRemap) {
-                        // 字体拿不到/没重映射但文字是私有区乱码 → 无能为力，保持原样
-                        application_1.Application.App.log.Warn("无法确认加密字体是否生效，跳过解密（保持页面原样）");
+                    if (fonts && typeof fonts.check === "function" && !fonts.check('28px "' + family + '"')) {
+                        // 页面字体还没生效——先不动页面，下一轮再试
+                        console.log("[CXFONT] page font not ready: " + family);
                         return [2 /*return*/, false];
                     }
-                    application_1.Application.App.log.Info("检测到字体加密（重映射生效），正在还原 " + targets.length + " 个字符...");
+                    return [3 /*break*/, 5];
+                case 4:
+                    e_1 = _a.sent();
+                    return [3 /*break*/, 5];
+                case 5:
+                    quoted = '"' + family + '"';
                     tHashes = {};
-                    blankAll = 0;
+                    blankCount = 0;
                     for (i = 0; i < targets.length; i++) {
                         try {
-                            bits = encHashes[targets[i]] || glyphBits(doc, targets[i], FONT_NAME);
+                            bits = glyphBits(doc_1, targets[i], quoted);
                             tHashes[targets[i]] = bits;
                             if (bitCount(bits) < 6) {
-                                blankAll++;
+                                blankCount++;
                             }
                         }
                         catch (e) {
                             // ignore
                         }
                     }
-                    if (blankAll == targets.length) {
-                        application_1.Application.App.log.Warn("加密字体的字形全空白，跳过解密");
+                    try {
+                        console.log("[CXFONT] targets=" + targets.length + " blank=" + blankCount + " sample=" + JSON.stringify(String(els[0].textContent || "").slice(0, 20)));
+                    }
+                    catch (e) { /* ignore */ }
+                    // 加密字体渲染不出字形 → 说明拿错了字体（或页面字体未生效），保持原样
+                    if (blankCount > targets.length * 0.5) {
+                        console.log("[CXFONT] font renders blank, skip (keep page untouched)");
                         return [2 /*return*/, false];
                     }
-                    resolved = {};
+                    getTable = function (font) {
+                        if (candidateCache.hasOwnProperty(font)) {
+                            return candidateCache[font];
+                        }
+                        var table = [];
+                        for (var ci = 0; ci < COMMON_CHARS.length; ci++) {
+                            var ch = COMMON_CHARS.charAt(ci);
+                            try {
+                                table.push({ ch: ch, bits: glyphBits(doc_1, ch, font) });
+                            }
+                            catch (e) {
+                                // ignore
+                            }
+                        }
+                        candidateCache[font] = table;
+                        return table;
+                    };
+                    cache = charMapCache[family] || (charMapCache[family] = {});
+                    newCount = 0;
                     for (ti = 0; ti < targets.length; ti++) {
                         t = targets[ti];
+                        if (cache.hasOwnProperty(t)) {
+                            continue;
+                        }
                         targetBits = tHashes[t];
                         if (!targetBits || bitCount(targetBits) < 6) {
                             continue;
                         }
                         bestChar = "";
                         bestDist = 1e9;
-                        for (ci = 0; ci < COMMON_CHARS.length; ci++) {
-                            ch = COMMON_CHARS.charAt(ci);
-                            bits = "";
-                            try {
-                                bits = glyphBits(doc, ch, SYS_FONT);
-                            }
-                            catch (e) {
-                                continue;
-                            }
-                            dist = hamDist(targetBits, bits);
-                            if (dist < bestDist) {
-                                bestDist = dist;
-                                bestChar = ch;
-                                if (dist == 0) {
-                                    break;
+                        for (fi = 0; fi < CANDIDATE_FONTS.length; fi++) {
+                            table = getTable(CANDIDATE_FONTS[fi]);
+                            for (ci = 0; ci < table.length; ci++) {
+                                dist = hamDist(targetBits, table[ci].bits);
+                                if (dist < bestDist) {
+                                    bestDist = dist;
+                                    bestChar = table[ci].ch;
+                                    if (dist == 0) {
+                                        break;
+                                    }
                                 }
                             }
+                            if (bestDist <= 40) {
+                                break;
+                            }
                         }
-                        if (bestChar && bestDist <= 300) {
-                            resolved[t] = bestChar;
+                        if (bestChar && bestDist <= 240) {
+                            cache[t] = bestChar;
+                            newCount++;
                         }
                     }
                     done = 0;
-                    uniqVals = {};
-                    for (k in resolved) {
-                        if (resolved.hasOwnProperty(k)) {
+                    for (ti = 0; ti < targets.length; ti++) {
+                        if (cache.hasOwnProperty(targets[ti])) {
                             done++;
-                            uniqVals[resolved[k]] = true;
                         }
                     }
-                    uniqCount = 0;
-                    for (k in uniqVals) {
-                        if (uniqVals.hasOwnProperty(k)) {
-                            uniqCount++;
-                        }
+                    try {
+                        console.log("[CXFONT] cached=" + done + "/" + targets.length + " newMatched=" + newCount);
                     }
+                    catch (e) { /* ignore */ }
                     if (done == 0) {
-                        application_1.Application.App.log.Warn("字体解密没匹配上（可能含非常用字），保持页面原样");
+                        console.log("[CXFONT] nothing resolved, keep page untouched");
                         return [2 /*return*/, false];
                     }
-                    if (done > 3 && uniqCount <= 1) {
-                        application_1.Application.App.log.Warn("字体解密结果异常（全解析成同一个字），已放弃替换");
-                        return [2 /*return*/, false];
-                    }
+                    rate = done / targets.length;
+                    // 替换页面文字；只有解析率高时才去掉加密字体类名（否则保留页面字体渲染残字）
                     for (i = 0; i < els.length; i++) {
                         el = els[i];
                         text = String(el.textContent || "");
-                        for (t in resolved) {
-                            if (resolved.hasOwnProperty(t)) {
-                                text = text.split(t).join(resolved[t]);
+                        for (t in cache) {
+                            if (cache.hasOwnProperty(t)) {
+                                text = text.split(t).join(cache[t]);
                             }
                         }
                         el.textContent = text;
-                        el.classList.remove("font-cxsecret");
+                        if (rate >= 0.95) {
+                            el.classList.remove("font-cxsecret");
+                        }
                     }
-                    win.__cxFontDecodeDone = true;
-                    application_1.Application.App.log.Info("字体解密完成，还原 " + done + "/" + targets.length + " 个字符");
+                    application_1.Application.App.log.Info("字体解密完成，还原 " + done + "/" + targets.length + " 个字符" + (rate >= 0.95 ? "（已去加密字体）" : "（文本已替换，字体类名保留）"));
                     return [2 /*return*/, true];
-                case 5:
+                case 6:
                     e_2 = _a.sent();
                     return [2 /*return*/, false];
-                case 6: return [2 /*return*/];
+                case 7: return [2 /*return*/];
             }
         });
     });

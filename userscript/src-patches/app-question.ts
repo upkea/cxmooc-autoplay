@@ -130,9 +130,49 @@ export function SwitchTopicType(title: string): TopicType {
 
 // 按页面 DOM 结构推断题型：没有题型标题时的兜底
 // 单选：radio 一组；多选：checkbox 一组；判断：两个 radio（对/错）；填空：input/textarea
+// 另外向上找分类标题（「一. 单选题（共1题）」），很多新版页面选项不是 input 元素
 export function GuessTopicType(el: HTMLElement): TopicType {
     try {
         let root = el || document.body;
+        // 0) 先看自身文字里有没有题型标记
+        let selfText = String(root.innerText || "").slice(0, 80);
+        if (/多选题|多选/.test(selfText)) {
+            return 2;
+        }
+        if (/判断题|判断/.test(selfText)) {
+            return 3;
+        }
+        if (/填空题|填空/.test(selfText)) {
+            return 4;
+        }
+        if (/单选题|单选/.test(selfText)) {
+            return 1;
+        }
+        // 1) 向上找分类标题
+        let node: HTMLElement = root;
+        for (let depth = 0; depth < 8 && node; depth++) {
+            let prev = node.previousElementSibling;
+            let guard = 0;
+            while (prev && guard < 6) {
+                let t = String(prev.innerText || "").slice(0, 40);
+                if (/多选题|多选/.test(t)) {
+                    return 2;
+                }
+                if (/判断题|判断/.test(t)) {
+                    return 3;
+                }
+                if (/填空题|填空/.test(t)) {
+                    return 4;
+                }
+                if (/单选题|单选/.test(t)) {
+                    return 1;
+                }
+                prev = prev.previousElementSibling;
+                guard++;
+            }
+            node = <HTMLElement>node.parentElement;
+        }
+        // 2) 按控件类型判断
         let checkbox = root.querySelectorAll('input[type="checkbox"]');
         let radio = root.querySelectorAll('input[type="radio"]');
         let input = root.querySelectorAll('input[type="text"],input[type="input"],textarea');
