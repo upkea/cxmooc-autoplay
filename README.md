@@ -1,4 +1,4 @@
-﻿# cxmooc-autoplay
+# cxmooc-autoplay
 
 超星（学习通）/ 智慧树 网课增强包：**视频自动恢复播放 + 「继续学习」提示自动点 + AI 自动答题**。
 
@@ -24,6 +24,8 @@ cxmooc-autoplay/
 │   ├── start.bat                 # 启动脚本
 │   └── check.bat                 # 只检测不点击（校准用）
 └── docs/
+    ├── AI-GUIDE.md               # 怎么拿 key / 怎么搭反代（不含任何 key）
+    └── TROUBLESHOOTING.md        # 排错 + 提交前检查
 ```
 
 ## 快速开始
@@ -38,27 +40,27 @@ cxmooc-autoplay/
 
 ### 2. 配置 AI 答题（可选）
 
-打开 Tampermonkey → 管理面板 → 「超星慕课小工具」→ **编辑**，找到脚本开头的 `config` 块：
+本项目**不内置任何 API Key**，`ai_key` 默认留空——留空时答题继续走原题库逻辑。要用 AI 答题，你二选一：
+
+- **方式 A（推荐）**：去官方平台注册一个免费 key —— 智谱 GLM-4-Flash 免费、注册即用。
+- **方式 B**：自建反代，把网页版豆包/DeepSeek/Kimi 变成 API。
+
+完整步骤（注册链接、base/model 对照表、反代部署命令、验证方法）见 **[docs/AI-GUIDE.md](docs/AI-GUIDE.md)**。
+
+拿到 key 后，打开 Tampermonkey → 管理面板 → 「超星慕课小工具」→ **编辑**，改脚本开头的 `config` 块：
 
 ```js
 ai_enable: true,                              // 启用 AI 答题
-ai_base: "https://api.siliconflow.cn/v1",     // OpenAI 兼容接口地址
-ai_key: "",                                   // 填你的 API Key，不填则继续用原题库
-ai_model: "Qwen/Qwen2.5-7B-Instruct",         // 模型名
+ai_base: "https://open.bigmodel.cn/api/paas/v4",  // 你的接口地址
+ai_key: "粘贴你自己的key",                     // 必须是你自己注册/搭的，本仓库不含 key
+ai_model: "glm-4-flash",                      // 模型名
 ```
 
 改完 **Ctrl+S** 保存 → 刷新学习通页面。
 
-常用免费/低价服务：
-
-| 服务 | `ai_base` | `ai_model` | 说明 |
-|---|---|---|---|
-| 智谱 GLM-4-Flash | `https://open.bigmodel.cn/api/paas/v4` | `glm-4-flash` | 官方免费模型，推荐 |
-| 硅基流动 | `https://api.siliconflow.cn/v1` | `Qwen/Qwen2.5-7B-Instruct` | 注册送额度 |
-| DeepSeek | `https://api.deepseek.com/v1` | `deepseek-chat` | 便宜，按量付费 |
-| 本地 Ollama | `http://127.0.0.1:11434/v1` | `qwen2.5:7b` | 完全离线免费，key 随便填 |
-
 > AI 答题会按题型要求模型只输出答案：单选给 `A`、多选给 `ABD`、判断给 `对/错`、填空按空逐行输出。
+>
+> ⚠️ **不要把含真实 key 的脚本提交到 GitHub**，提交前确认 `ai_key` 是空字符串。
 
 ### 3. 视频自动恢复（已内置）
 
