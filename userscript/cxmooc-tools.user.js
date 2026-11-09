@@ -1056,7 +1056,7 @@ var ToolsQuestionBankFacade = /** @class */ (function () {
     // 用 AI 逐题作答（不经过题库）
     ToolsQuestionBankFacade.prototype.answerWithAI = function (callback) {
         return __awaiter(this, void 0, void 0, function () {
-            var list, i, status, interval, i, q, type, options, title, parts, k, ret, r2, r3, voted, e_1, correct, wantTrue, mapped, k, text, isTrue, isFalse, idx, answer, tmp, e3_1, e_2;
+            var list, i, status, interval, i, q, type, options, title, parts, k, ret, r2, r3, voted, e_1, rate, wrong, correct, wantTrue, mapped, k, text, isTrue, isFalse, idx, answer, tmp, e3_1, e_2;
             return __generator(this, function (_a) {
                 switch (_a.label) {
                     case 0:
@@ -1139,11 +1139,27 @@ var ToolsQuestionBankFacade = /** @class */ (function () {
                         e_1 = _a.sent();
                         return [3 /*break*/, 10];
                     case 10:
+                        // 拟人化：故意答错率（wrong_rate，百分比，默认 0 = 永远答对；只对单选/判断生效）
+                        if (ret.ok && (type == 1 || type == 3)) {
+                            try {
+                                rate = parseFloat(application_1.Application.App.config.GetConfig("wrong_rate", "0"));
+                                if (!isNaN(rate) && rate > 0 && Math.random() * 100 < rate) {
+                                    wrong = this.pickWrongAnswer(type, options, ret.correct);
+                                    if (wrong && wrong.length > 0) {
+                                        application_1.Application.App.log.Warn("拟人化：这道题故意答错（wrong_rate=" + rate + "%）");
+                                        ret = { ok: true, correct: wrong, raw: ret.raw };
+                                    }
+                                }
+                            }
+                            catch (e) {
+                                // ignore
+                            }
+                        }
                         if (!(!ret.ok || !ret.correct || ret.correct.length == 0)) return [3 /*break*/, 13];
                         application_1.Application.App.log.Warn("AI 没给出答案：" + (ret.error || "无法解析"));
                         status = this.randAnswer(status, "no_answer", q);
                         if (!(i < list.length - 1)) return [3 /*break*/, 12];
-                        return [4 /*yield*/, utils_1.Sleep(interval)];
+                        return [4 /*yield*/, this.aiSleep(interval)];
                     case 11:
                         _a.sent();
                         _a.label = 12;
@@ -1217,7 +1233,7 @@ var ToolsQuestionBankFacade = /** @class */ (function () {
                         return [3 /*break*/, 19];
                     case 19:
                         if (!(i < list.length - 1)) return [3 /*break*/, 21];
-                        return [4 /*yield*/, utils_1.Sleep(interval)];
+                        return [4 /*yield*/, this.aiSleep(interval)];
                     case 20:
                         _a.sent();
                         _a.label = 21;
@@ -1225,6 +1241,31 @@ var ToolsQuestionBankFacade = /** @class */ (function () {
                         i++;
                         return [3 /*break*/, 1];
                     case 22: return [2 /*return*/, callback(status)];
+                }
+            });
+        });
+    };
+    // 拟人化：每题之间在 topic_interval 基础上加 0~3 秒随机延迟
+    ToolsQuestionBankFacade.prototype.aiSleep = function (interval) {
+        return __awaiter(this, void 0, void 0, function () {
+            var r, extra, e_3;
+            return __generator(this, function (_a) {
+                switch (_a.label) {
+                    case 0:
+                        _a.trys.push([0, 2, , 4]);
+                        r = application_1.Application.App.config.GetConfig("random_delay", "true");
+                        extra = r != "false" ? Math.floor(Math.random() * 3000) : 0;
+                        return [4 /*yield*/, utils_1.Sleep(interval + extra)];
+                    case 1:
+                        _a.sent();
+                        return [3 /*break*/, 4];
+                    case 2:
+                        e_3 = _a.sent();
+                        return [4 /*yield*/, utils_1.Sleep(interval)];
+                    case 3:
+                        _a.sent();
+                        return [3 /*break*/, 4];
+                    case 4: return [2 /*return*/];
                 }
             });
         });
@@ -1274,6 +1315,33 @@ var ToolsQuestionBankFacade = /** @class */ (function () {
         }
         catch (e) {
             return list[0];
+        }
+    };
+    // 拟人化辅助：挑一个"错"的答案（单选换一个字母；判断翻转对错）
+    ToolsQuestionBankFacade.prototype.pickWrongAnswer = function (type, options, correct) {
+        try {
+            if (!correct || correct.length == 0) {
+                return null;
+            }
+            if (type == 3) {
+                var want = correct[0].option;
+                return [{ option: !want, content: !want }];
+            }
+            var right = String(correct[0].option || "").toUpperCase();
+            var cands = [];
+            for (var i = 0; i < (options || []).length; i++) {
+                var o = String(options[i].option || "").toUpperCase();
+                if (o && o != right) {
+                    cands.push({ option: options[i].option, content: "" });
+                }
+            }
+            if (cands.length == 0) {
+                return null;
+            }
+            return [cands[Math.floor(Math.random() * cands.length)]];
+        }
+        catch (e) {
+            return null;
         }
     };
     ToolsQuestionBankFacade.prototype.errText = function (e) {
@@ -6660,6 +6728,20 @@ var Video = /** @class */ (function (_super) {
          * 设置播放速度
          */
         set: function (speed) {
+            // 拟人化：倍速上限（speed_limit，默认 2；0 = 不限制）
+            try {
+                var lim = parseFloat(application_1.Application.App.config.GetConfig("speed_limit", "2"));
+                if (isNaN(lim) || lim <= 0) {
+                    lim = 0;
+                }
+                if (lim > 0 && speed > lim) {
+                    application_1.Application.App.log.Info("倍速被限制到 " + lim + "x（拟人化设置 speed_limit）");
+                    speed = lim;
+                }
+            }
+            catch (e) {
+                // ignore
+            }
             this._playbackRate = speed;
             if (this.video) {
                 this.video.playbackRate = speed;

@@ -414,11 +414,26 @@ export class ToolsQuestionBankFacade implements QuestionBankFacade {
                         // 复核失败就保留第一次的结果
                     }
                 }
+                // 拟人化：故意答错率（wrong_rate，百分比，默认 0 = 永远答对；只对单选/判断生效）
+                if (ret.ok && (type == 1 || type == 3)) {
+                    try {
+                        let rate = parseFloat(Application.App.config.GetConfig("wrong_rate", "0"));
+                        if (!isNaN(rate) && rate > 0 && Math.random() * 100 < rate) {
+                            let wrong = this.pickWrongAnswer(type, options, ret.correct);
+                            if (wrong && wrong.length > 0) {
+                                Application.App.log.Warn("拟人化：这道题故意答错（wrong_rate=" + rate + "%）");
+                                ret = {ok: true, correct: wrong, raw: ret.raw};
+                            }
+                        }
+                    } catch (e) {
+                        // ignore
+                    }
+                }
                 if (!ret.ok || !ret.correct || ret.correct.length == 0) {
                     Application.App.log.Warn("AI 没给出答案：" + (ret.error || "无法解析"));
                     status = this.randAnswer(status, "no_answer", q);
                     if (i < list.length - 1) {
-                        await Sleep(interval);
+                        await this.aiSleep(interval);
                     }
                     continue;
                 }
@@ -483,10 +498,21 @@ export class ToolsQuestionBankFacade implements QuestionBankFacade {
                 }
             }
             if (i < list.length - 1) {
-                await Sleep(interval);
+                await this.aiSleep(interval);
             }
         }
         return callback(status);
+    }
+
+    // 拟人化：每题之间在 topic_interval 基础上加 0~3 秒随机延迟
+    protected async aiSleep(interval: number): Promise<void> {
+        try {
+            let r = Application.App.config.GetConfig("random_delay", "true");
+            let extra = r != "false" ? Math.floor(Math.random() * 3000) : 0;
+            await Sleep(interval + extra);
+        } catch (e) {
+            await Sleep(interval);
+        }
     }
 
     // 把一次 AI 结果压成可比对的字符串（选项按字母排序）
@@ -534,6 +560,33 @@ export class ToolsQuestionBankFacade implements QuestionBankFacade {
             return best != "" ? map[best].res : list[0];
         } catch (e) {
             return list[0];
+        }
+    }
+
+    // 拟人化辅助：挑一个"错"的答案（单选换一个字母；判断翻转对错）
+    protected pickWrongAnswer(type: TopicType, options: Option[], correct: Option[]): Option[] {
+        try {
+            if (!correct || correct.length == 0) {
+                return null;
+            }
+            if (type == 3) {
+                let want = correct[0].option;
+                return [{option: !want, content: !want}];
+            }
+            let right = String(correct[0].option || "").toUpperCase();
+            let cands: Option[] = [];
+            for (let i = 0; i < (options || []).length; i++) {
+                let o = String(options[i].option || "").toUpperCase();
+                if (o && o != right) {
+                    cands.push({option: options[i].option, content: ""});
+                }
+            }
+            if (cands.length == 0) {
+                return null;
+            }
+            return [cands[Math.floor(Math.random() * cands.length)]];
+        } catch (e) {
+            return null;
         }
     }
 
