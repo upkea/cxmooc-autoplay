@@ -11,6 +11,7 @@ import {Topic, QueryQuestions} from "@App/internal/app/topic";
 import {CxTaskControlBar, CxTask} from "@App/mooc/chaoxing/task";
 import {TaskType} from "@App/internal/app/task";
 import {AIEnabled} from "@App/internal/app/ai";
+import {DecodeChaoxingFont} from "./font-decode";
 
 export class CxTopicControlBar extends CxTaskControlBar {
     public defaultBtn() {
@@ -150,9 +151,15 @@ export class CxCourseTopic extends Topic {
         });
     }
 
-    public QueryAnswer(): Promise<QuestionStatus> {
+    public async QueryAnswer(): Promise<QuestionStatus> {
         if (this.context.document.URL.indexOf("selectWorkQuestionYiPiYue") > 0) {
             return null;
+        }
+        // 学习通有些题目用字体加密，先解密再抓题
+        try {
+            await DecodeChaoxingFont(this.context);
+        } catch (e) {
+            // ignore
         }
         return super.QueryAnswer();
     }

@@ -442,3 +442,24 @@ npm run tampermonkey
 ## 只发布了超星版本
 
 `userscript/cxmooc-tools.user.js` 只包含超星（学习通）版本。智慧树/中国大学MOOC 的构建产物未包含在本仓库，需要的话用同样方法构建 `tampermonkey-zhihuishu.js` / `tampermonkey-course163.js` 并拼上对应头部。
+
+## 8. 字体加密解密（Canvas 字形对比法）
+
+现象：题干明明是「敦煌石窟」，脚本抓到的却是「敦吖石窟」——学习通把题目文字用自定义字体重映射了：DOM 里存错误码点，浏览器用加密字体渲染出正确字形，所以 `innerText` 拿到的是乱码，AI 自然答错。
+
+思路参考 [DaRin1403/xuexitong-autostudy](https://github.com/DaRin1403/xuexitong-autostudy)（MIT）。实现见 `src/mooc/chaoxing/font-decode.ts`：
+
+1. 找页面里的 `.font-cxsecret` 元素（加密文字）
+2. 从 `<style>` / `@font-face` 里取出加密字体的 base64，用 `FontFace` 加载成 `cxfontdec`
+3. 用该字体把每个乱码字符渲染到 32×32 canvas，取 alpha 通道二值化成"字形指纹"
+4. 用同一字体渲染常用汉字/字母/符号（内置约 1200 字候选集），指纹相同者即为同一个字
+5. 把 `.font-cxsecret` 元素的 `textContent` 换成正确文字，并移除该类名
+
+调用点：`CxCourseTopic.QueryAnswer()` 开头先 `await DecodeChaoxingFont(this.context)`，再走原来的抓题流程。日志会出现：
+
+```
+检测到字体加密，正在还原 N 个字符...
+字体解密完成，还原 N 个字符
+```
+
+解密后题干、选项都是正常中文，AI 正确率才能正常。

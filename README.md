@@ -120,6 +120,7 @@ ai_model: "glm-4-flash",                      // 模型名
 
 - [CodFrm/cxmooc-tools](https://github.com/CodFrm/cxmooc-tools) —— 原始超星/智慧树/中国大学MOOC 工具（MIT）
 - [lightagent-lab/web-llm-gateways](https://github.com/lightagent-lab/web-llm-gateways) —— 网页版大模型反代网关的思路参考
+- [DaRin1403/xuexitong-autostudy](https://github.com/DaRin1403/xuexitong-autostudy) —— 学习通「字体加密」解密思路（Canvas 字形对比法，MIT），见 `src/mooc/chaoxing/font-decode.ts`
 
 ## License
 
