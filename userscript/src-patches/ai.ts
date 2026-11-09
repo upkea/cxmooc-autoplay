@@ -168,7 +168,7 @@ export function AskAIVision(imageDataUrl: string, prompt: string): Promise<Visio
             const body = JSON.stringify({
                 model: model,
                 temperature: 0,
-                max_tokens: 200,
+                max_tokens: 800,
                 messages: [{
                     role: "user",
                     content: [

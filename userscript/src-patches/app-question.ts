@@ -479,15 +479,18 @@ export class ToolsQuestionBankFacade implements QuestionBankFacade {
                     Application.App.log.Info("AI 答题中（" + (i + 1) + "/" + list.length + "）：" + title.substring(0, 40));
                 }
                 // 诊断：把实际发给 AI 的选项打出来（内容为空说明页面没取到选项文字）
+                // 视觉读题模式下选项来自图片，不再打印（避免显示加密字体造成的乱码）
                 try {
-                    if (options.length > 0) {
-                        let parts: string[] = [];
-                        for (let k = 0; k < options.length; k++) {
-                            parts.push(String(options[k].option) + "=" + String(options[k].content || "").slice(0, 20));
+                    if (!VisionEnabled()) {
+                        if (options.length > 0) {
+                            let parts: string[] = [];
+                            for (let k = 0; k < options.length; k++) {
+                                parts.push(String(options[k].option) + "=" + String(options[k].content || "").slice(0, 20));
+                            }
+                            Application.App.log.Info("AI 选项：" + parts.join(" | "));
+                        } else {
+                            Application.App.log.Info("AI 选项：没取到选项文字");
                         }
-                        Application.App.log.Info("AI 选项：" + parts.join(" | "));
-                    } else {
-                        Application.App.log.Info("AI 选项：没取到选项文字");
                     }
                 } catch (e) {
                     // ignore
@@ -515,44 +518,66 @@ export class ToolsQuestionBankFacade implements QuestionBankFacade {
                                     (type == 3 ? "（A 表示对，B 表示错，只输出一个字母）" : (type == 2 ? "（多选输出多个字母，如 答案：ABD）" : "（单选题只输出一个字母）")) +
                                     "。除了最后一行，不要输出其他内容。"
                                 );
-                                if (vr.ok && vr.text) {
-                                    let txt = String(vr.text);
-                                    // 优先解析「答案：X」
+                                // 从选项列表推出可用字母（防止模型输出 H 这类不存在的选项）
+                                let validLetters: string[] = [];
+                                for (let oi = 0; oi < options.length; oi++) {
+                                    let lo = String(options[oi].option || "").trim().toUpperCase();
+                                    if (/^[A-H]$/.test(lo) && validLetters.indexOf(lo) < 0) {
+                                        validLetters.push(lo);
+                                    }
+                                }
+                                if (validLetters.length == 0) {
+                                    validLetters = ["A", "B", "C", "D"];
+                                }
+                                let parseLetters = (txt: string): string[] => {
                                     let letters: string[] = [];
+                                    let push = (mm: string[]) => {
+                                        for (let mi = 0; mi < mm.length; mi++) {
+                                            if (validLetters.indexOf(mm[mi]) >= 0 && letters.indexOf(mm[mi]) < 0) {
+                                                letters.push(mm[mi]);
+                                            }
+                                        }
+                                    };
                                     let mAns = txt.match(/答案\s*[:：]?\s*([A-Ha-h][A-Ha-h\s,，、]*)/);
                                     if (mAns && mAns[1]) {
-                                        let mm = mAns[1].toUpperCase().match(/[A-H]/g) || [];
-                                        for (let mi = 0; mi < mm.length; mi++) {
-                                            if (letters.indexOf(mm[mi]) < 0) {
-                                                letters.push(mm[mi]);
-                                            }
-                                        }
+                                        push(mAns[1].toUpperCase().match(/[A-H]/g) || []);
                                     }
                                     if (letters.length == 0) {
-                                        // 兜底：取最后一行里的字母
                                         let lines = txt.split(/\r?\n/).map((s: string) => s.trim()).filter((s: string) => s.length > 0);
                                         let last = lines.length > 0 ? lines[lines.length - 1] : txt;
-                                        let mm = String(last).toUpperCase().match(/[A-H]/g) || [];
-                                        for (let mi = 0; mi < mm.length; mi++) {
-                                            if (letters.indexOf(mm[mi]) < 0) {
-                                                letters.push(mm[mi]);
-                                            }
-                                        }
+                                        push(String(last).toUpperCase().match(/[A-H]/g) || []);
                                     }
+                                    return letters;
+                                };
+                                let letters: string[] = [];
+                                let visionRaw = "";
+                                if (vr.ok && vr.text) {
+                                    visionRaw = String(vr.text);
+                                    letters = parseLetters(visionRaw);
+                                }
+                                // 拿不到合法字母就再试一次极简提示（不要解释、只回字母）
+                                if (letters.length == 0) {
+                                    let vr2 = await AskAIVision(img, "看图回答：" + typeName + "，只输出正确选项的字母（" + validLetters.join("/") + "），不要任何解释。");
+                                    if (vr2.ok && vr2.text) {
+                                        visionRaw = String(vr2.text);
+                                        letters = parseLetters(visionRaw);
+                                    }
+                                }
+                                if (letters.length > 0) {
                                     if (type == 1 || type == 3) {
                                         letters = letters.slice(0, 1);
                                     }
-                                    if (letters.length > 0) {
-                                        Application.App.log.Info("视觉读题答案：" + letters.join("") + "（" + String(vr.text).slice(0, 30) + "）");
-                                        if (type == 3) {
-                                            // 判断题：A=对(true) B=错(false)，后续统一转换逻辑会映射到题目自己的选项值
-                                            ret = {ok: true, correct: [{option: <any>(letters[0] == "A"), content: ""}], raw: "vision:" + letters.join(""), vision: true};
-                                        } else {
-                                            ret = {ok: true, correct: letters.map((l) => ({option: l, content: ""})), raw: "vision:" + letters.join(""), vision: true};
-                                        }
+                                    Application.App.log.Info("视觉读题答案：" + letters.join(""));
+                                    if (type == 3) {
+                                        // 判断题：A=对(true) B=错(false)，后续统一转换逻辑会映射到题目自己的选项值
+                                        ret = {ok: true, correct: [{option: <any>(letters[0] == "A"), content: ""}], raw: "vision:" + letters.join(""), vision: true};
+                                    } else {
+                                        ret = {ok: true, correct: letters.map((l) => ({option: l, content: ""})), raw: "vision:" + letters.join(""), vision: true};
                                     }
                                 } else if (vr.error) {
                                     Application.App.log.Warn("视觉读题失败：" + vr.error + "（回退文字模式）");
+                                } else {
+                                    Application.App.log.Warn("视觉读题未给出有效选项（" + visionRaw.replace(/\s+/g, " ").slice(0, 40) + "）");
                                 }
                             }
                         }

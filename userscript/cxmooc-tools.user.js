@@ -556,7 +556,7 @@ function AskAIVision(imageDataUrl, prompt) {
             var body = JSON.stringify({
                 model: model,
                 temperature: 0,
-                max_tokens: 200,
+                max_tokens: 800,
                 messages: [{
                         role: "user",
                         content: [
@@ -1358,7 +1358,7 @@ var ToolsQuestionBankFacade = /** @class */ (function () {
     // 用 AI 逐题作答（不经过题库）
     ToolsQuestionBankFacade.prototype.answerWithAI = function (callback) {
         return __awaiter(this, void 0, void 0, function () {
-            var list, i, status, interval, i, q, type, options, title, parts, k, ret, el, img, typeName, vr, txt, letters, mAns, mm, mi, lines, last, mm, mi, e_1, r2, r3, voted, e_2, rate, wrong, correct, wantTrue, mapped, k, text, isTrue, isFalse, idx, answer, tmp, e3_1, e_3;
+            var list, i, status, interval, _loop_1, this_1, i;
             return __generator(this, function (_a) {
                 switch (_a.label) {
                     case 0:
@@ -1375,253 +1375,296 @@ var ToolsQuestionBankFacade = /** @class */ (function () {
                         }
                         status = "success";
                         interval = application_1.Application.App.config.topic_interval * 1000;
+                        _loop_1 = function (i) {
+                            var q, type, options, title, parts, k, ret, el, img, typeName, vr, validLetters_1, oi, lo, parseLetters, letters, visionRaw, vr2, e_1, r2, r3, voted, e_2, rate, wrong, correct, wantTrue, mapped, k, text, isTrue, isFalse, idx, answer, tmp, e3_1, e_3;
+                            return __generator(this, function (_a) {
+                                switch (_a.label) {
+                                    case 0:
+                                        q = list[i];
+                                        _a.label = 1;
+                                    case 1:
+                                        _a.trys.push([1, 26, , 27]);
+                                        type = q.GetType();
+                                        options = [];
+                                        try {
+                                            options = q.GetOptions ? (q.GetOptions() || []) : [];
+                                        }
+                                        catch (e) {
+                                            application_1.Application.App.log.Warn("读取选项失败（不影响作答）：" + ((e && e.message) ? e.message : e));
+                                            options = [];
+                                        }
+                                        title = "";
+                                        try {
+                                            title = q.GetTopic() || "";
+                                        }
+                                        catch (e) {
+                                            title = "";
+                                        }
+                                        // 诊断日志：视觉读题模式下不打印原始（可能加密的）题目文字
+                                        if (ai_1.VisionEnabled()) {
+                                            application_1.Application.App.log.Info("AI 答题中（" + (i + 1) + "/" + list.length + "）：题型 " + (type == 1 ? "单选" : (type == 2 ? "多选" : (type == 3 ? "判断" : "填空"))) + "，选项 " + options.length + " 个（视觉读题模式）");
+                                        }
+                                        else {
+                                            application_1.Application.App.log.Info("AI 答题中（" + (i + 1) + "/" + list.length + "）：" + title.substring(0, 40));
+                                        }
+                                        // 诊断：把实际发给 AI 的选项打出来（内容为空说明页面没取到选项文字）
+                                        // 视觉读题模式下选项来自图片，不再打印（避免显示加密字体造成的乱码）
+                                        try {
+                                            if (!ai_1.VisionEnabled()) {
+                                                if (options.length > 0) {
+                                                    parts = [];
+                                                    for (k = 0; k < options.length; k++) {
+                                                        parts.push(String(options[k].option) + "=" + String(options[k].content || "").slice(0, 20));
+                                                    }
+                                                    application_1.Application.App.log.Info("AI 选项：" + parts.join(" | "));
+                                                }
+                                                else {
+                                                    application_1.Application.App.log.Info("AI 选项：没取到选项文字");
+                                                }
+                                            }
+                                        }
+                                        catch (e) {
+                                            // ignore
+                                        }
+                                        ret = null;
+                                        if (!ai_1.VisionEnabled()) return [3 /*break*/, 9];
+                                        _a.label = 2;
+                                    case 2:
+                                        _a.trys.push([2, 8, , 9]);
+                                        el = null;
+                                        try {
+                                            el = q.GetElement ? q.GetElement() : null;
+                                        }
+                                        catch (e) {
+                                            el = null;
+                                        }
+                                        if (!el) return [3 /*break*/, 7];
+                                        return [4 /*yield*/, ai_1.CaptureQuestionImage(el)];
+                                    case 3:
+                                        img = _a.sent();
+                                        if (!img) return [3 /*break*/, 7];
+                                        typeName = type == 1 ? "单选题" : (type == 2 ? "多选题" : (type == 3 ? "判断题" : "填空题"));
+                                        return [4 /*yield*/, ai_1.AskAIVision(img, "图片是一道中文" + typeName + "的题目截图（页面有字体保护，图片里显示的文字是真实的）。" +
+                                                "请仔细阅读图片中的题干和所有选项，先在内心分析每个选项是否正确，再给出答案。" +
+                                                "最后单独一行输出：答案：X" +
+                                                (type == 3 ? "（A 表示对，B 表示错，只输出一个字母）" : (type == 2 ? "（多选输出多个字母，如 答案：ABD）" : "（单选题只输出一个字母）")) +
+                                                "。除了最后一行，不要输出其他内容。")];
+                                    case 4:
+                                        vr = _a.sent();
+                                        validLetters_1 = [];
+                                        for (oi = 0; oi < options.length; oi++) {
+                                            lo = String(options[oi].option || "").trim().toUpperCase();
+                                            if (/^[A-H]$/.test(lo) && validLetters_1.indexOf(lo) < 0) {
+                                                validLetters_1.push(lo);
+                                            }
+                                        }
+                                        if (validLetters_1.length == 0) {
+                                            validLetters_1 = ["A", "B", "C", "D"];
+                                        }
+                                        parseLetters = function (txt) {
+                                            var letters = [];
+                                            var push = function (mm) {
+                                                for (var mi = 0; mi < mm.length; mi++) {
+                                                    if (validLetters_1.indexOf(mm[mi]) >= 0 && letters.indexOf(mm[mi]) < 0) {
+                                                        letters.push(mm[mi]);
+                                                    }
+                                                }
+                                            };
+                                            var mAns = txt.match(/答案\s*[:：]?\s*([A-Ha-h][A-Ha-h\s,，、]*)/);
+                                            if (mAns && mAns[1]) {
+                                                push(mAns[1].toUpperCase().match(/[A-H]/g) || []);
+                                            }
+                                            if (letters.length == 0) {
+                                                var lines = txt.split(/\r?\n/).map(function (s) { return s.trim(); }).filter(function (s) { return s.length > 0; });
+                                                var last = lines.length > 0 ? lines[lines.length - 1] : txt;
+                                                push(String(last).toUpperCase().match(/[A-H]/g) || []);
+                                            }
+                                            return letters;
+                                        };
+                                        letters = [];
+                                        visionRaw = "";
+                                        if (vr.ok && vr.text) {
+                                            visionRaw = String(vr.text);
+                                            letters = parseLetters(visionRaw);
+                                        }
+                                        if (!(letters.length == 0)) return [3 /*break*/, 6];
+                                        return [4 /*yield*/, ai_1.AskAIVision(img, "看图回答：" + typeName + "，只输出正确选项的字母（" + validLetters_1.join("/") + "），不要任何解释。")];
+                                    case 5:
+                                        vr2 = _a.sent();
+                                        if (vr2.ok && vr2.text) {
+                                            visionRaw = String(vr2.text);
+                                            letters = parseLetters(visionRaw);
+                                        }
+                                        _a.label = 6;
+                                    case 6:
+                                        if (letters.length > 0) {
+                                            if (type == 1 || type == 3) {
+                                                letters = letters.slice(0, 1);
+                                            }
+                                            application_1.Application.App.log.Info("视觉读题答案：" + letters.join(""));
+                                            if (type == 3) {
+                                                // 判断题：A=对(true) B=错(false)，后续统一转换逻辑会映射到题目自己的选项值
+                                                ret = { ok: true, correct: [{ option: (letters[0] == "A"), content: "" }], raw: "vision:" + letters.join(""), vision: true };
+                                            }
+                                            else {
+                                                ret = { ok: true, correct: letters.map(function (l) { return ({ option: l, content: "" }); }), raw: "vision:" + letters.join(""), vision: true };
+                                            }
+                                        }
+                                        else if (vr.error) {
+                                            application_1.Application.App.log.Warn("视觉读题失败：" + vr.error + "（回退文字模式）");
+                                        }
+                                        else {
+                                            application_1.Application.App.log.Warn("视觉读题未给出有效选项（" + visionRaw.replace(/\s+/g, " ").slice(0, 40) + "）");
+                                        }
+                                        _a.label = 7;
+                                    case 7: return [3 /*break*/, 9];
+                                    case 8:
+                                        e_1 = _a.sent();
+                                        return [3 /*break*/, 9];
+                                    case 9:
+                                        if (!(!ret || !ret.ok)) return [3 /*break*/, 11];
+                                        return [4 /*yield*/, ai_1.AskAI(title, type, options)];
+                                    case 10:
+                                        ret = _a.sent();
+                                        _a.label = 11;
+                                    case 11:
+                                        if (!(!ret.vision && (type == 1 || type == 2 || type == 3) && ret.ok)) return [3 /*break*/, 18];
+                                        _a.label = 12;
+                                    case 12:
+                                        _a.trys.push([12, 17, , 18]);
+                                        return [4 /*yield*/, ai_1.AskAI(title, type, options)];
+                                    case 13:
+                                        r2 = _a.sent();
+                                        if (!this_1.sameAIResult(ret, r2)) return [3 /*break*/, 14];
+                                        application_1.Application.App.log.Info("AI 复核一致");
+                                        return [3 /*break*/, 16];
+                                    case 14: return [4 /*yield*/, ai_1.AskAI(title, type, options)];
+                                    case 15:
+                                        r3 = _a.sent();
+                                        voted = this_1.voteAIResults([ret, r2, r3]);
+                                        application_1.Application.App.log.Info("AI 两次不一致，三次投票 -> " + this_1.aiVoteKey(voted));
+                                        ret = voted;
+                                        _a.label = 16;
+                                    case 16: return [3 /*break*/, 18];
+                                    case 17:
+                                        e_2 = _a.sent();
+                                        return [3 /*break*/, 18];
+                                    case 18:
+                                        // 拟人化：故意答错率（wrong_rate，百分比，默认 0 = 永远答对；只对单选/判断生效）
+                                        if (ret.ok && (type == 1 || type == 3)) {
+                                            try {
+                                                rate = parseFloat(application_1.Application.App.config.GetConfig("wrong_rate", "0"));
+                                                if (!isNaN(rate) && rate > 0 && Math.random() * 100 < rate) {
+                                                    wrong = this_1.pickWrongAnswer(type, options, ret.correct);
+                                                    if (wrong && wrong.length > 0) {
+                                                        application_1.Application.App.log.Warn("拟人化：这道题故意答错（wrong_rate=" + rate + "%）");
+                                                        ret = { ok: true, correct: wrong, raw: ret.raw };
+                                                    }
+                                                }
+                                            }
+                                            catch (e) {
+                                                // ignore
+                                            }
+                                        }
+                                        if (!(!ret.ok || !ret.correct || ret.correct.length == 0)) return [3 /*break*/, 21];
+                                        application_1.Application.App.log.Warn("AI 没给出答案：" + (ret.error || "无法解析"));
+                                        status = this_1.randAnswer(status, "no_answer", q);
+                                        if (!(i < list.length - 1)) return [3 /*break*/, 20];
+                                        return [4 /*yield*/, this_1.aiSleep(interval)];
+                                    case 19:
+                                        _a.sent();
+                                        _a.label = 20;
+                                    case 20: return [2 /*return*/, "continue"];
+                                    case 21:
+                                        application_1.Application.App.log.Info("AI 回答：" + String(ret.raw || "").replace(/\s+/g, " ").slice(0, 60));
+                                        correct = ret.correct;
+                                        if (type == 3 && options.length > 0) {
+                                            wantTrue = !!ret.correct[0].option;
+                                            mapped = new Array();
+                                            for (k = 0; k < options.length; k++) {
+                                                text = String(options[k].content || "") + " " + String(options[k].option || "");
+                                                isTrue = /对|正确|√|✓|TRUE/i.test(text);
+                                                isFalse = /错|错误|×|✗|FALSE/i.test(text);
+                                                if ((wantTrue && isTrue && !isFalse) || (!wantTrue && isFalse && !isTrue)) {
+                                                    mapped.push({ option: String(options[k].option || ""), content: "" });
+                                                    break;
+                                                }
+                                            }
+                                            if (mapped.length == 0) {
+                                                idx = wantTrue ? 0 : 1;
+                                                if (options[idx]) {
+                                                    mapped.push({ option: String(options[idx].option || ""), content: "" });
+                                                }
+                                            }
+                                            if (mapped.length > 0) {
+                                                correct = mapped;
+                                            }
+                                        }
+                                        answer = {
+                                            index: i,
+                                            topic: title,
+                                            type: type,
+                                            status: "ok",
+                                            answers: options,
+                                            correct: correct,
+                                            Equal: function (content1, content2) { return utils_1.removeHTML(content1) == utils_1.removeHTML(content2); },
+                                        };
+                                        application_1.Application.App.log.Info("准备勾选：" + JSON.stringify(correct.map(function (v) { return v.option; })));
+                                        tmp = void 0;
+                                        _a.label = 22;
+                                    case 22:
+                                        _a.trys.push([22, 24, , 25]);
+                                        return [4 /*yield*/, q.Fill(answer)];
+                                    case 23:
+                                        tmp = _a.sent();
+                                        return [3 /*break*/, 25];
+                                    case 24:
+                                        e3_1 = _a.sent();
+                                        application_1.Application.App.log.Warn("勾选答案失败：" + this_1.errText(e3_1));
+                                        tmp = "no_match";
+                                        return [3 /*break*/, 25];
+                                    case 25:
+                                        if (tmp == "ok") {
+                                            q.SetStatus("ok");
+                                            application_1.Application.App.log.Info("AI 答案已填写：" + JSON.stringify(correct.map(function (v) { return v.option; })));
+                                        }
+                                        else {
+                                            status = this_1.randAnswer(status, tmp, q);
+                                        }
+                                        return [3 /*break*/, 27];
+                                    case 26:
+                                        e_3 = _a.sent();
+                                        application_1.Application.App.log.Warn("AI 答题异常（第 " + (i + 1) + " 题）：" + this_1.errText(e_3));
+                                        try {
+                                            status = this_1.randAnswer(status, "no_answer", q);
+                                        }
+                                        catch (e2) {
+                                            status = "incomplete";
+                                        }
+                                        return [3 /*break*/, 27];
+                                    case 27:
+                                        if (!(i < list.length - 1)) return [3 /*break*/, 29];
+                                        return [4 /*yield*/, this_1.aiSleep(interval)];
+                                    case 28:
+                                        _a.sent();
+                                        _a.label = 29;
+                                    case 29: return [2 /*return*/];
+                                }
+                            });
+                        };
+                        this_1 = this;
                         i = 0;
                         _a.label = 1;
                     case 1:
-                        if (!(i < list.length)) return [3 /*break*/, 29];
-                        q = list[i];
-                        _a.label = 2;
+                        if (!(i < list.length)) return [3 /*break*/, 4];
+                        return [5 /*yield**/, _loop_1(i)];
                     case 2:
-                        _a.trys.push([2, 25, , 26]);
-                        type = q.GetType();
-                        options = [];
-                        try {
-                            options = q.GetOptions ? (q.GetOptions() || []) : [];
-                        }
-                        catch (e) {
-                            application_1.Application.App.log.Warn("读取选项失败（不影响作答）：" + ((e && e.message) ? e.message : e));
-                            options = [];
-                        }
-                        title = "";
-                        try {
-                            title = q.GetTopic() || "";
-                        }
-                        catch (e) {
-                            title = "";
-                        }
-                        // 诊断日志：视觉读题模式下不打印原始（可能加密的）题目文字
-                        if (ai_1.VisionEnabled()) {
-                            application_1.Application.App.log.Info("AI 答题中（" + (i + 1) + "/" + list.length + "）：题型 " + (type == 1 ? "单选" : (type == 2 ? "多选" : (type == 3 ? "判断" : "填空"))) + "，选项 " + options.length + " 个（视觉读题模式）");
-                        }
-                        else {
-                            application_1.Application.App.log.Info("AI 答题中（" + (i + 1) + "/" + list.length + "）：" + title.substring(0, 40));
-                        }
-                        // 诊断：把实际发给 AI 的选项打出来（内容为空说明页面没取到选项文字）
-                        try {
-                            if (options.length > 0) {
-                                parts = [];
-                                for (k = 0; k < options.length; k++) {
-                                    parts.push(String(options[k].option) + "=" + String(options[k].content || "").slice(0, 20));
-                                }
-                                application_1.Application.App.log.Info("AI 选项：" + parts.join(" | "));
-                            }
-                            else {
-                                application_1.Application.App.log.Info("AI 选项：没取到选项文字");
-                            }
-                        }
-                        catch (e) {
-                            // ignore
-                        }
-                        ret = null;
-                        if (!ai_1.VisionEnabled()) return [3 /*break*/, 8];
+                        _a.sent();
                         _a.label = 3;
                     case 3:
-                        _a.trys.push([3, 7, , 8]);
-                        el = null;
-                        try {
-                            el = q.GetElement ? q.GetElement() : null;
-                        }
-                        catch (e) {
-                            el = null;
-                        }
-                        if (!el) return [3 /*break*/, 6];
-                        return [4 /*yield*/, ai_1.CaptureQuestionImage(el)];
-                    case 4:
-                        img = _a.sent();
-                        if (!img) return [3 /*break*/, 6];
-                        typeName = type == 1 ? "单选题" : (type == 2 ? "多选题" : (type == 3 ? "判断题" : "填空题"));
-                        return [4 /*yield*/, ai_1.AskAIVision(img, "图片是一道中文" + typeName + "的题目截图（页面有字体保护，图片里显示的文字是真实的）。" +
-                                "请仔细阅读图片中的题干和所有选项，先在内心分析每个选项是否正确，再给出答案。" +
-                                "最后单独一行输出：答案：X" +
-                                (type == 3 ? "（A 表示对，B 表示错，只输出一个字母）" : (type == 2 ? "（多选输出多个字母，如 答案：ABD）" : "（单选题只输出一个字母）")) +
-                                "。除了最后一行，不要输出其他内容。")];
-                    case 5:
-                        vr = _a.sent();
-                        if (vr.ok && vr.text) {
-                            txt = String(vr.text);
-                            letters = [];
-                            mAns = txt.match(/答案\s*[:：]?\s*([A-Ha-h][A-Ha-h\s,，、]*)/);
-                            if (mAns && mAns[1]) {
-                                mm = mAns[1].toUpperCase().match(/[A-H]/g) || [];
-                                for (mi = 0; mi < mm.length; mi++) {
-                                    if (letters.indexOf(mm[mi]) < 0) {
-                                        letters.push(mm[mi]);
-                                    }
-                                }
-                            }
-                            if (letters.length == 0) {
-                                lines = txt.split(/\r?\n/).map(function (s) { return s.trim(); }).filter(function (s) { return s.length > 0; });
-                                last = lines.length > 0 ? lines[lines.length - 1] : txt;
-                                mm = String(last).toUpperCase().match(/[A-H]/g) || [];
-                                for (mi = 0; mi < mm.length; mi++) {
-                                    if (letters.indexOf(mm[mi]) < 0) {
-                                        letters.push(mm[mi]);
-                                    }
-                                }
-                            }
-                            if (type == 1 || type == 3) {
-                                letters = letters.slice(0, 1);
-                            }
-                            if (letters.length > 0) {
-                                application_1.Application.App.log.Info("视觉读题答案：" + letters.join("") + "（" + String(vr.text).slice(0, 30) + "）");
-                                if (type == 3) {
-                                    // 判断题：A=对(true) B=错(false)，后续统一转换逻辑会映射到题目自己的选项值
-                                    ret = { ok: true, correct: [{ option: (letters[0] == "A"), content: "" }], raw: "vision:" + letters.join(""), vision: true };
-                                }
-                                else {
-                                    ret = { ok: true, correct: letters.map(function (l) { return ({ option: l, content: "" }); }), raw: "vision:" + letters.join(""), vision: true };
-                                }
-                            }
-                        }
-                        else if (vr.error) {
-                            application_1.Application.App.log.Warn("视觉读题失败：" + vr.error + "（回退文字模式）");
-                        }
-                        _a.label = 6;
-                    case 6: return [3 /*break*/, 8];
-                    case 7:
-                        e_1 = _a.sent();
-                        return [3 /*break*/, 8];
-                    case 8:
-                        if (!(!ret || !ret.ok)) return [3 /*break*/, 10];
-                        return [4 /*yield*/, ai_1.AskAI(title, type, options)];
-                    case 9:
-                        ret = _a.sent();
-                        _a.label = 10;
-                    case 10:
-                        if (!(!ret.vision && (type == 1 || type == 2 || type == 3) && ret.ok)) return [3 /*break*/, 17];
-                        _a.label = 11;
-                    case 11:
-                        _a.trys.push([11, 16, , 17]);
-                        return [4 /*yield*/, ai_1.AskAI(title, type, options)];
-                    case 12:
-                        r2 = _a.sent();
-                        if (!this.sameAIResult(ret, r2)) return [3 /*break*/, 13];
-                        application_1.Application.App.log.Info("AI 复核一致");
-                        return [3 /*break*/, 15];
-                    case 13: return [4 /*yield*/, ai_1.AskAI(title, type, options)];
-                    case 14:
-                        r3 = _a.sent();
-                        voted = this.voteAIResults([ret, r2, r3]);
-                        application_1.Application.App.log.Info("AI 两次不一致，三次投票 -> " + this.aiVoteKey(voted));
-                        ret = voted;
-                        _a.label = 15;
-                    case 15: return [3 /*break*/, 17];
-                    case 16:
-                        e_2 = _a.sent();
-                        return [3 /*break*/, 17];
-                    case 17:
-                        // 拟人化：故意答错率（wrong_rate，百分比，默认 0 = 永远答对；只对单选/判断生效）
-                        if (ret.ok && (type == 1 || type == 3)) {
-                            try {
-                                rate = parseFloat(application_1.Application.App.config.GetConfig("wrong_rate", "0"));
-                                if (!isNaN(rate) && rate > 0 && Math.random() * 100 < rate) {
-                                    wrong = this.pickWrongAnswer(type, options, ret.correct);
-                                    if (wrong && wrong.length > 0) {
-                                        application_1.Application.App.log.Warn("拟人化：这道题故意答错（wrong_rate=" + rate + "%）");
-                                        ret = { ok: true, correct: wrong, raw: ret.raw };
-                                    }
-                                }
-                            }
-                            catch (e) {
-                                // ignore
-                            }
-                        }
-                        if (!(!ret.ok || !ret.correct || ret.correct.length == 0)) return [3 /*break*/, 20];
-                        application_1.Application.App.log.Warn("AI 没给出答案：" + (ret.error || "无法解析"));
-                        status = this.randAnswer(status, "no_answer", q);
-                        if (!(i < list.length - 1)) return [3 /*break*/, 19];
-                        return [4 /*yield*/, this.aiSleep(interval)];
-                    case 18:
-                        _a.sent();
-                        _a.label = 19;
-                    case 19: return [3 /*break*/, 28];
-                    case 20:
-                        application_1.Application.App.log.Info("AI 回答：" + String(ret.raw || "").replace(/\s+/g, " ").slice(0, 60));
-                        correct = ret.correct;
-                        if (type == 3 && options.length > 0) {
-                            wantTrue = !!ret.correct[0].option;
-                            mapped = new Array();
-                            for (k = 0; k < options.length; k++) {
-                                text = String(options[k].content || "") + " " + String(options[k].option || "");
-                                isTrue = /对|正确|√|✓|TRUE/i.test(text);
-                                isFalse = /错|错误|×|✗|FALSE/i.test(text);
-                                if ((wantTrue && isTrue && !isFalse) || (!wantTrue && isFalse && !isTrue)) {
-                                    mapped.push({ option: String(options[k].option || ""), content: "" });
-                                    break;
-                                }
-                            }
-                            if (mapped.length == 0) {
-                                idx = wantTrue ? 0 : 1;
-                                if (options[idx]) {
-                                    mapped.push({ option: String(options[idx].option || ""), content: "" });
-                                }
-                            }
-                            if (mapped.length > 0) {
-                                correct = mapped;
-                            }
-                        }
-                        answer = {
-                            index: i,
-                            topic: title,
-                            type: type,
-                            status: "ok",
-                            answers: options,
-                            correct: correct,
-                            Equal: function (content1, content2) { return utils_1.removeHTML(content1) == utils_1.removeHTML(content2); },
-                        };
-                        application_1.Application.App.log.Info("准备勾选：" + JSON.stringify(correct.map(function (v) { return v.option; })));
-                        tmp = void 0;
-                        _a.label = 21;
-                    case 21:
-                        _a.trys.push([21, 23, , 24]);
-                        return [4 /*yield*/, q.Fill(answer)];
-                    case 22:
-                        tmp = _a.sent();
-                        return [3 /*break*/, 24];
-                    case 23:
-                        e3_1 = _a.sent();
-                        application_1.Application.App.log.Warn("勾选答案失败：" + this.errText(e3_1));
-                        tmp = "no_match";
-                        return [3 /*break*/, 24];
-                    case 24:
-                        if (tmp == "ok") {
-                            q.SetStatus("ok");
-                            application_1.Application.App.log.Info("AI 答案已填写：" + JSON.stringify(correct.map(function (v) { return v.option; })));
-                        }
-                        else {
-                            status = this.randAnswer(status, tmp, q);
-                        }
-                        return [3 /*break*/, 26];
-                    case 25:
-                        e_3 = _a.sent();
-                        application_1.Application.App.log.Warn("AI 答题异常（第 " + (i + 1) + " 题）：" + this.errText(e_3));
-                        try {
-                            status = this.randAnswer(status, "no_answer", q);
-                        }
-                        catch (e2) {
-                            status = "incomplete";
-                        }
-                        return [3 /*break*/, 26];
-                    case 26:
-                        if (!(i < list.length - 1)) return [3 /*break*/, 28];
-                        return [4 /*yield*/, this.aiSleep(interval)];
-                    case 27:
-                        _a.sent();
-                        _a.label = 28;
-                    case 28:
                         i++;
                         return [3 /*break*/, 1];
-                    case 29: return [2 /*return*/, callback(status)];
+                    case 4: return [2 /*return*/, callback(status)];
                 }
             });
         });
