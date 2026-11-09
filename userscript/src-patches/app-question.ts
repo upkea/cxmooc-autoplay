@@ -372,7 +372,7 @@ export class ToolsQuestionBankFacade implements QuestionBankFacade {
                 try {
                     options = q.GetOptions ? (q.GetOptions() || []) : [];
                 } catch (e) {
-                    Application.App.log.Warn("读取选项失败（不影响作答）：" + e);
+                    Application.App.log.Warn("读取选项失败（不影响作答）：" + ((e && e.message) ? e.message : e));
                     options = [];
                 }
                 let title = "";
@@ -437,7 +437,7 @@ export class ToolsQuestionBankFacade implements QuestionBankFacade {
                     status = this.randAnswer(status, tmp, q);
                 }
             } catch (e) {
-                Application.App.log.Warn("AI 答题异常（第 " + (i + 1) + " 题）：" + e);
+                Application.App.log.Warn("AI 答题异常（第 " + (i + 1) + " 题）：" + ((e && e.message) ? e.message : e));
                 try {
                     status = this.randAnswer(status, "no_answer", q);
                 } catch (e2) {

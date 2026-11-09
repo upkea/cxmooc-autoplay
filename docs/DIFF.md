@@ -13,16 +13,16 @@ README 里说过本项目是「基于原版的增强包」，这里把**到底�
 
 ## 代码统计
 
-对原始 master 源码树做全量比对：**13 个文件改动，+1194 行 / -33 行**（删除的都是被重写的旧实现，没有删功能）。
+对原始 master 源码树做全量比对：**13 个文件改动，+1281 行 / -49 行**（删除的都是被重写的旧实现，没有删功能）。
 
 | 文件 | 类型 | 行数 |
 |---|---|---|
 | `src/internal/app/ai.ts` | 🆕 新增 | +300 |
 | `src/internal/utils/log.ts` | 修改 | +253 |
+| `src/mooc/chaoxing/question.ts` | 修改 | +172 / -29 |
 | `src/tampermonkey/continue-watch.ts` | 🆕 新增 | +161 |
-| `src/views/common.ts` | 修改 | +133 / -2 |
+| `src/views/common.ts` | 修改 | +150 / -11 |
 | `src/internal/app/question.ts` | 修改 | +120 |
-| `src/mooc/chaoxing/question.ts` | 修改 | +102 / -22 |
 | `src/mooc/chaoxing/task.ts` | 修改 | +40 |
 | `src/internal/app/topic.ts` | 修改 | +27 / -9 |
 | `src/mooc/chaoxing/course.ts` | 修改 | +7 |

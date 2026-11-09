@@ -107,8 +107,8 @@ window.addEventListener("load", () => {
     left:60px;
     top: 40px;
     z-index: 100000;
-    background: rgba(256, 256, 256, 0.3);
-    box-shadow: 0px 0px 5px #bbb;
+    background: rgba(255, 255, 255, 0.98);
+    box-shadow: 0px 0px 8px rgba(0, 0, 0, 0.25);
 }
 
 .head {
@@ -136,7 +136,7 @@ window.addEventListener("load", () => {
     width: 100%;
     height: 200px;
     border-top:0px;
-    overflow-y: scroll;
+    overflow-y: auto;
     overflow-x: hidden;
 }
 
@@ -191,6 +191,9 @@ window.addEventListener("load", () => {
     color: #c33;
     margin-left: auto;
     white-space: nowrap;
+    max-width: 96px;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 /* 更改API 展开的填写表单 */
@@ -274,18 +277,23 @@ window.addEventListener("load", () => {
 .tools-notice-content .log {
     height: auto;
     width: auto;
-    text-align: center;
+    text-align: left;
     border: 1px solid #eee;
     overflow: hidden;
 }
 
 .tools-notice-content .log p {
     margin: 0;
-    color: #aaa;
-    font-size: 11px;
-    font-weight: 500;
+    padding: 3px 6px;
+    color: #666;
+    font-size: 12px;
+    font-weight: 400;
     font-family: Arial, Helvetica, sans-serif;
-    line-height: 26px;
+    line-height: 18px;
+    text-align: left;
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow-wrap: break-word;
 }
 
 /* 滚动槽 */
@@ -345,7 +353,7 @@ window.addEventListener("load", () => {
 
 .tools-logger-panel:hover,
 .tools-logger-panel:focus-within {
-    background: rgba(256, 256, 256, 0.7);
+    background: #fff;
 }
 
 .tools-logger-panel .head:active {

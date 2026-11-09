@@ -387,6 +387,9 @@ class cxJudgeQuestion extends cxSelectQuestion implements Question {
 
     protected getContent(el: HTMLElement): string {
         let tmpel = <HTMLInputElement>el.querySelector("label > input,input");
+        if (tmpel == null) {
+            return (el.innerText || "").trim();
+        }
         if (tmpel.value == "true") {
             return "对√";
         }
@@ -394,11 +397,26 @@ class cxJudgeQuestion extends cxSelectQuestion implements Question {
     }
 
     protected click(el: HTMLElement) {
-        let tmpel = (<HTMLInputElement>el.querySelector("label > input,input"));
-        if (!tmpel.checked) {
-            tmpel.click();
+        if (!el) {
+            return;
         }
-        this.AddNotice(this.getContent(el));
+        try {
+            let tmpel = <HTMLInputElement>el.querySelector("label > input,input");
+            if (tmpel) {
+                if (!tmpel.checked) {
+                    tmpel.click();
+                }
+            } else {
+                el.click();
+            }
+        } catch (e) {
+            // 页面自己的脚本可能在这里抛错，忽略它，别让整题失败
+        }
+        try {
+            this.AddNotice(this.getContent(el));
+        } catch (e) {
+            // ignore
+        }
     }
 
     public Random(): TopicStatus {
@@ -410,9 +428,54 @@ class cxJudgeQuestion extends cxSelectQuestion implements Question {
 
     public Fill(answer: Answer): Promise<TopicStatus> {
         return new Promise<TopicStatus>(resolve => {
-            let options = this.options();
-            this.click(options[answer.correct[0].content ? 0 : 1]);
-            return resolve("ok");
+            try {
+                let options = this.options();
+                if (!options || options.length == 0) {
+                    return resolve("no_match");
+                }
+                // 判断 AI（或题库）要的是「对」还是「错」
+                let wantTrue: boolean = null;
+                let c: any = answer.correct && answer.correct[0];
+                if (c) {
+                    if (typeof c.content == "boolean") {
+                        wantTrue = c.content;
+                    } else if (typeof c.option == "boolean") {
+                        wantTrue = c.option;
+                    } else {
+                        let txt = String(c.content || "") + " " + String(c.option || "");
+                        if (/对|正确|√|✓|TRUE/i.test(txt)) {
+                            wantTrue = true;
+                        } else if (/错|错误|×|✗|FALSE/i.test(txt)) {
+                            wantTrue = false;
+                        }
+                    }
+                }
+                let match = -1;
+                for (let j = 0; j < options.length; j++) {
+                    let val = String(this.getOption(options[j]) || "").toLowerCase();
+                    let content = this.getContent(options[j]) || "";
+                    let isTrue = val == "true" || val == "1" || /对|正确|√/.test(content);
+                    let isFalse = val == "false" || val == "0" || /错|错误|×/.test(content);
+                    if (wantTrue === true && isTrue) {
+                        match = j;
+                        break;
+                    }
+                    if (wantTrue === false && isFalse) {
+                        match = j;
+                        break;
+                    }
+                }
+                if (match < 0) {
+                    match = wantTrue === false ? 1 : 0;
+                }
+                if (match > options.length - 1) {
+                    match = options.length - 1;
+                }
+                this.click(options[match]);
+                return resolve("ok");
+            } catch (e) {
+                return resolve("no_match");
+            }
         })
     }
 

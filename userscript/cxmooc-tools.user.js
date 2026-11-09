@@ -1046,7 +1046,7 @@ var ToolsQuestionBankFacade = /** @class */ (function () {
                             options = q.GetOptions ? (q.GetOptions() || []) : [];
                         }
                         catch (e) {
-                            application_1.Application.App.log.Warn("读取选项失败（不影响作答）：" + e);
+                            application_1.Application.App.log.Warn("读取选项失败（不影响作答）：" + ((e && e.message) ? e.message : e));
                             options = [];
                         }
                         title = "";
@@ -1115,7 +1115,7 @@ var ToolsQuestionBankFacade = /** @class */ (function () {
                         return [3 /*break*/, 9];
                     case 8:
                         e_1 = _a.sent();
-                        application_1.Application.App.log.Warn("AI 答题异常（第 " + (i + 1) + " 题）：" + e_1);
+                        application_1.Application.App.log.Warn("AI 答题异常（第 " + (i + 1) + " 题）：" + ((e_1 && e_1.message) ? e_1.message : e_1));
                         try {
                             status = this.randAnswer(status, "no_answer", q);
                         }
@@ -4198,17 +4198,38 @@ var cxJudgeQuestion = /** @class */ (function (_super) {
     }
     cxJudgeQuestion.prototype.getContent = function (el) {
         var tmpel = el.querySelector("label > input,input");
+        if (tmpel == null) {
+            return (el.innerText || "").trim();
+        }
         if (tmpel.value == "true") {
             return "对√";
         }
         return "错×";
     };
     cxJudgeQuestion.prototype.click = function (el) {
-        var tmpel = el.querySelector("label > input,input");
-        if (!tmpel.checked) {
-            tmpel.click();
+        if (!el) {
+            return;
         }
-        this.AddNotice(this.getContent(el));
+        try {
+            var tmpel = el.querySelector("label > input,input");
+            if (tmpel) {
+                if (!tmpel.checked) {
+                    tmpel.click();
+                }
+            }
+            else {
+                el.click();
+            }
+        }
+        catch (e) {
+            // 页面自己的脚本可能在这里抛错，忽略它，别让整题失败
+        }
+        try {
+            this.AddNotice(this.getContent(el));
+        }
+        catch (e) {
+            // ignore
+        }
     };
     cxJudgeQuestion.prototype.Random = function () {
         var options = this.options();
@@ -4219,9 +4240,58 @@ var cxJudgeQuestion = /** @class */ (function (_super) {
     cxJudgeQuestion.prototype.Fill = function (answer) {
         var _this = this;
         return new Promise(function (resolve) {
-            var options = _this.options();
-            _this.click(options[answer.correct[0].content ? 0 : 1]);
-            return resolve("ok");
+            try {
+                var options = _this.options();
+                if (!options || options.length == 0) {
+                    return resolve("no_match");
+                }
+                // 判断 AI（或题库）要的是「对」还是「错」
+                var wantTrue = null;
+                var c = answer.correct && answer.correct[0];
+                if (c) {
+                    if (typeof c.content == "boolean") {
+                        wantTrue = c.content;
+                    }
+                    else if (typeof c.option == "boolean") {
+                        wantTrue = c.option;
+                    }
+                    else {
+                        var txt = String(c.content || "") + " " + String(c.option || "");
+                        if (/对|正确|√|✓|TRUE/i.test(txt)) {
+                            wantTrue = true;
+                        }
+                        else if (/错|错误|×|✗|FALSE/i.test(txt)) {
+                            wantTrue = false;
+                        }
+                    }
+                }
+                var match = -1;
+                for (var j = 0; j < options.length; j++) {
+                    var val = String(_this.getOption(options[j]) || "").toLowerCase();
+                    var content = _this.getContent(options[j]) || "";
+                    var isTrue = val == "true" || val == "1" || /对|正确|√/.test(content);
+                    var isFalse = val == "false" || val == "0" || /错|错误|×/.test(content);
+                    if (wantTrue === true && isTrue) {
+                        match = j;
+                        break;
+                    }
+                    if (wantTrue === false && isFalse) {
+                        match = j;
+                        break;
+                    }
+                }
+                if (match < 0) {
+                    match = wantTrue === false ? 1 : 0;
+                }
+                if (match > options.length - 1) {
+                    match = options.length - 1;
+                }
+                _this.click(options[match]);
+                return resolve("ok");
+            }
+            catch (e) {
+                return resolve("no_match");
+            }
         });
     };
     cxJudgeQuestion.prototype.Correct = function () {
@@ -6033,7 +6103,7 @@ continue_watch_1.StartVideoGuard();
 /***/ (function(module, exports) {
 
 window.addEventListener("load", function () {
-    var css = "\n@keyframes aniripple  \n{\n    0%{\n        width:0px;\n        height:0px;\n        opacity:0.4;\n    }\n    100%{\n        width:500px;\n        height:500px;\n        opacity:0;\n    }\n}  \n\n#cxtools {\n    position: absolute;\n    left: 250px;\n    top: 2px;\n    width: 210px;\n    font-size: 0;\n}\n\n.cx-btn {\n    outline: none;\n    border: 0;\n    background: #7d9d35;\n    color: #fff;\n    border-radius: 4px;\n    padding: 2px 8px;\n    cursor: pointer;\n    font-size: 12px;\n    margin-left: 4px;\n}\n\n.cx-btn:hover {\n    box-shadow: 1px 1px 1px 1px #ccc;\n}\n\n.zhs-tools-btn {\n    color: #fff;\n    background: #ff9d34;\n    padding: 4px;\n    display: inline-block;\n    height: 24px;\n    font-size: 14px;\n    line-height: 24px;\n    margin:0;\n    cursor:pointer;\n}\n.btn-ripple{\n    position:absolute;\n    background:#000;\n    pointer-events:none;\n    transform:translate(-50%,-50%);\n    border-radius:50%;\n    animation:aniripple 1s linear infinite;\n}\n\n.zhs-start-btn{\n    background: #36ac36;\n}\n\n.zhs-start-btn:hover{\n    background: #3b8d3b;\n}\n\n#zhs-ytbn {\n    color: #fff;\n    background: #e777ff;\n}\n\n#zhs-ytbn:hover {\n    background: #e7b7f1;\n}\n\n.zhs-search-answer {\n    border: 0;\n    outline: none;\n    padding: 4px;\n}\n\n.zhs-search-answer:hover {\n    opacity: .85;\n}\n\n.mooc163-search{\n    background-color: #60b900;\n    display: block;\n    margin: 0 auto;\n}\n\n.tools-logger-panel{\n    width: 360px;\n    height: auto;\n    max-height: 470px;\n    color:#000;\n    position: fixed;\n    margin: 0 auto;\n    display: block;\n    font-size: 14px;\n    border-radius: 4px;\n    width: 340px;\n    text-align: center;\n    overflow: hidden;\n    left:60px;\n    top: 40px;\n    z-index: 100000;\n    background: rgba(256, 256, 256, 0.3);\n    box-shadow: 0px 0px 5px #bbb;\n}\n\n.head {\n    width: 100%;\n    height: 30px;\n    padding: 4px;\n    box-sizing: border-box;\n    cursor: move;\n    transition-property: opacity, background-color;\n    transition: 200ms ease-in-out;\n}\n\n.head span{\n    color:#000;\n    float:left;\n    font-weight: 550;\n}\n\n.status {\n    color: #67C23A;\n    font-weight: 600;\n}\n\n.tools-notice-content {\n    width: 100%;\n    height: 200px;\n    border-top:0px;\n    overflow-y: scroll;\n    overflow-x: hidden;\n}\n\n/* \u5C0F\u5DE5\u5177\u901A\u77E5\u6761\u91CC\u7684\u6309\u94AE\u680F\uFF08\u5F00\u59CB\u6302\u673A/\u79D2\u8FC7\u89C6\u9891/\u4E0B\u8F7D\u8D44\u6E90/\u4E0B\u8F7D\u5B57\u5E55\uFF09 */\n.tools-btn-bar {\n    display: flex;\n    flex-wrap: wrap;\n    gap: 4px;\n    padding: 6px 4px;\n    border-top: 1px solid #eee;\n    border-bottom: 1px solid #eee;\n    box-sizing: border-box;\n}\n\n.tools-btn-bar:empty {\n    display: none;\n}\n\n.tools-btn-bar .cx-btn {\n    margin: 0 !important;\n}\n\n/* \u5C0F\u5DE5\u5177\u901A\u77E5\u6761\u91CC\u7684 AI \u7B54\u9898\u680F\uFF08\u66F4\u6539API \u6309\u94AE + \u81EA\u52A8\u7B54\u9898\u5F00\u5173 + \u72B6\u6001\uFF09 */\n.tools-ai-bar {\n    display: flex;\n    align-items: center;\n    gap: 8px;\n    padding: 4px 6px;\n    border-top: 1px solid #eee;\n    border-bottom: 1px solid #eee;\n    box-sizing: border-box;\n    background: rgba(255, 255, 255, 0.5);\n}\n\n.tools-ai-bar .tools-ai-btn {\n    margin: 0 !important;\n}\n\n.tools-ai-bar .switch {\n    margin: 0;\n    width: auto;\n}\n\n.tools-ai-bar .switch span {\n    color: #000;\n    font-size: 12px;\n    font-weight: 500;\n}\n\n.tools-ai-status {\n    font-size: 11px;\n    color: #c33;\n    margin-left: auto;\n    white-space: nowrap;\n}\n\n/* \u66F4\u6539API \u5C55\u5F00\u7684\u586B\u5199\u8868\u5355 */\n.tools-ai-form {\n    display: none;\n    padding: 6px;\n    border-bottom: 1px solid #eee;\n    text-align: left;\n    box-sizing: border-box;\n    background: rgba(255, 255, 255, 0.85);\n}\n\n.tools-ai-form .row {\n    display: flex;\n    align-items: center;\n    margin-bottom: 4px;\n}\n\n.tools-ai-form .row > span {\n    width: 58px;\n    flex: none;\n    font-size: 12px;\n    color: #333;\n}\n\n.tools-ai-form .row input {\n    flex: 1;\n    min-width: 0;\n    height: 22px;\n    padding: 0 4px;\n    font-size: 12px;\n    color: #000;\n    background: #fff;\n    border: 1px solid #ddd;\n    border-radius: 3px;\n    outline: none;\n    box-sizing: border-box;\n}\n\n.tools-ai-form .row input:focus {\n    border-color: #409EFF;\n}\n\n.tools-ai-form .row select {\n    flex: 1;\n    min-width: 0;\n    height: 22px;\n    padding: 0 2px;\n    font-size: 12px;\n    color: #000;\n    background: #fff;\n    border: 1px solid #ddd;\n    border-radius: 3px;\n    outline: none;\n    box-sizing: border-box;\n}\n\n.tools-ai-form .row select:focus {\n    border-color: #409EFF;\n}\n\n.tools-ai-form button:disabled {\n    opacity: 0.6;\n    cursor: default;\n}\n\n.tools-ai-form .tools-ai-actions {\n    gap: 6px;\n    margin-bottom: 0;\n}\n\n.tools-ai-form .tools-ai-actions .cx-btn {\n    margin: 0 !important;\n}\n\n.tools-ai-hint {\n    font-size: 11px;\n    color: #999;\n}\n\n.tools-notice-content .log {\n    height: auto;\n    width: auto;\n    text-align: center;\n    border: 1px solid #eee;\n    overflow: hidden;\n}\n\n.tools-notice-content .log p {\n    margin: 0;\n    color: #aaa;\n    font-size: 11px;\n    font-weight: 500;\n    font-family: Arial, Helvetica, sans-serif;\n    line-height: 26px;\n}\n\n/* \u6EDA\u52A8\u69FD */\n::-webkit-scrollbar {\n    width: 10px;\n    height: 10px;\n}\n\n::-webkit-scrollbar-track {\n    border-radius: 3px;\n    background: rgba(0, 0, 0, 0.06);\n    -webkit-box-shadow: inset 0 0 5px rgba(0, 0, 0, 0.08);\n}\n\n/* \u6EDA\u52A8\u6761\u6ED1\u5757 */\n::-webkit-scrollbar-thumb {\n    border-radius: 3px;\n    background: rgba(0, 0, 0, 0.12);\n    -webkit-box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.2);\n}\n\n/* \u590D\u9009\u6846 */\n.switch {\n    margin: 2px auto;\n    display: inline-flex;\n    align-items: center;\n    width: auto;\n}\n.checkbox-input {\n    display: none\n}\n.checkbox {\n    -webkit-transition: background-color 0.3s;\n    transition: background-color 0.3s;\n    background-color: #fff;\n    border: 1px solid #d7d7d7;\n    border-radius: 50px;\n    width: 16px;\n    height: 16px;\n    vertical-align:middle;\n    margin: 0 5px;\n}\n.checkbox-input:checked+.checkbox {\n    background-color: #409EFF;\n}\n.checkbox-input:checked+.checkbox:after {\n    // content: \"\u221A\";\n    display: inline-block;\n    height: 100%;\n    width: 100%;\n    color: #fff;\n    text-align: center;\n    line-height: 16px;\n    font-size: 12px;\n    box-shadow: 0 0 4px #409EFF;\n}\n\n.tools-logger-panel:hover,\n.tools-logger-panel:focus-within {\n    background: rgba(256, 256, 256, 0.7);\n}\n\n.tools-logger-panel .head:active {\n    background-color: #E5E5E5;\n}\n\n.tools-logger-panel > .close {\n    margin: 2px;\n}\n\n";
+    var css = "\n@keyframes aniripple  \n{\n    0%{\n        width:0px;\n        height:0px;\n        opacity:0.4;\n    }\n    100%{\n        width:500px;\n        height:500px;\n        opacity:0;\n    }\n}  \n\n#cxtools {\n    position: absolute;\n    left: 250px;\n    top: 2px;\n    width: 210px;\n    font-size: 0;\n}\n\n.cx-btn {\n    outline: none;\n    border: 0;\n    background: #7d9d35;\n    color: #fff;\n    border-radius: 4px;\n    padding: 2px 8px;\n    cursor: pointer;\n    font-size: 12px;\n    margin-left: 4px;\n}\n\n.cx-btn:hover {\n    box-shadow: 1px 1px 1px 1px #ccc;\n}\n\n.zhs-tools-btn {\n    color: #fff;\n    background: #ff9d34;\n    padding: 4px;\n    display: inline-block;\n    height: 24px;\n    font-size: 14px;\n    line-height: 24px;\n    margin:0;\n    cursor:pointer;\n}\n.btn-ripple{\n    position:absolute;\n    background:#000;\n    pointer-events:none;\n    transform:translate(-50%,-50%);\n    border-radius:50%;\n    animation:aniripple 1s linear infinite;\n}\n\n.zhs-start-btn{\n    background: #36ac36;\n}\n\n.zhs-start-btn:hover{\n    background: #3b8d3b;\n}\n\n#zhs-ytbn {\n    color: #fff;\n    background: #e777ff;\n}\n\n#zhs-ytbn:hover {\n    background: #e7b7f1;\n}\n\n.zhs-search-answer {\n    border: 0;\n    outline: none;\n    padding: 4px;\n}\n\n.zhs-search-answer:hover {\n    opacity: .85;\n}\n\n.mooc163-search{\n    background-color: #60b900;\n    display: block;\n    margin: 0 auto;\n}\n\n.tools-logger-panel{\n    width: 360px;\n    height: auto;\n    max-height: 470px;\n    color:#000;\n    position: fixed;\n    margin: 0 auto;\n    display: block;\n    font-size: 14px;\n    border-radius: 4px;\n    width: 340px;\n    text-align: center;\n    overflow: hidden;\n    left:60px;\n    top: 40px;\n    z-index: 100000;\n    background: rgba(255, 255, 255, 0.98);\n    box-shadow: 0px 0px 8px rgba(0, 0, 0, 0.25);\n}\n\n.head {\n    width: 100%;\n    height: 30px;\n    padding: 4px;\n    box-sizing: border-box;\n    cursor: move;\n    transition-property: opacity, background-color;\n    transition: 200ms ease-in-out;\n}\n\n.head span{\n    color:#000;\n    float:left;\n    font-weight: 550;\n}\n\n.status {\n    color: #67C23A;\n    font-weight: 600;\n}\n\n.tools-notice-content {\n    width: 100%;\n    height: 200px;\n    border-top:0px;\n    overflow-y: auto;\n    overflow-x: hidden;\n}\n\n/* \u5C0F\u5DE5\u5177\u901A\u77E5\u6761\u91CC\u7684\u6309\u94AE\u680F\uFF08\u5F00\u59CB\u6302\u673A/\u79D2\u8FC7\u89C6\u9891/\u4E0B\u8F7D\u8D44\u6E90/\u4E0B\u8F7D\u5B57\u5E55\uFF09 */\n.tools-btn-bar {\n    display: flex;\n    flex-wrap: wrap;\n    gap: 4px;\n    padding: 6px 4px;\n    border-top: 1px solid #eee;\n    border-bottom: 1px solid #eee;\n    box-sizing: border-box;\n}\n\n.tools-btn-bar:empty {\n    display: none;\n}\n\n.tools-btn-bar .cx-btn {\n    margin: 0 !important;\n}\n\n/* \u5C0F\u5DE5\u5177\u901A\u77E5\u6761\u91CC\u7684 AI \u7B54\u9898\u680F\uFF08\u66F4\u6539API \u6309\u94AE + \u81EA\u52A8\u7B54\u9898\u5F00\u5173 + \u72B6\u6001\uFF09 */\n.tools-ai-bar {\n    display: flex;\n    align-items: center;\n    gap: 8px;\n    padding: 4px 6px;\n    border-top: 1px solid #eee;\n    border-bottom: 1px solid #eee;\n    box-sizing: border-box;\n    background: rgba(255, 255, 255, 0.5);\n}\n\n.tools-ai-bar .tools-ai-btn {\n    margin: 0 !important;\n}\n\n.tools-ai-bar .switch {\n    margin: 0;\n    width: auto;\n}\n\n.tools-ai-bar .switch span {\n    color: #000;\n    font-size: 12px;\n    font-weight: 500;\n}\n\n.tools-ai-status {\n    font-size: 11px;\n    color: #c33;\n    margin-left: auto;\n    white-space: nowrap;\n    max-width: 96px;\n    overflow: hidden;\n    text-overflow: ellipsis;\n}\n\n/* \u66F4\u6539API \u5C55\u5F00\u7684\u586B\u5199\u8868\u5355 */\n.tools-ai-form {\n    display: none;\n    padding: 6px;\n    border-bottom: 1px solid #eee;\n    text-align: left;\n    box-sizing: border-box;\n    background: rgba(255, 255, 255, 0.85);\n}\n\n.tools-ai-form .row {\n    display: flex;\n    align-items: center;\n    margin-bottom: 4px;\n}\n\n.tools-ai-form .row > span {\n    width: 58px;\n    flex: none;\n    font-size: 12px;\n    color: #333;\n}\n\n.tools-ai-form .row input {\n    flex: 1;\n    min-width: 0;\n    height: 22px;\n    padding: 0 4px;\n    font-size: 12px;\n    color: #000;\n    background: #fff;\n    border: 1px solid #ddd;\n    border-radius: 3px;\n    outline: none;\n    box-sizing: border-box;\n}\n\n.tools-ai-form .row input:focus {\n    border-color: #409EFF;\n}\n\n.tools-ai-form .row select {\n    flex: 1;\n    min-width: 0;\n    height: 22px;\n    padding: 0 2px;\n    font-size: 12px;\n    color: #000;\n    background: #fff;\n    border: 1px solid #ddd;\n    border-radius: 3px;\n    outline: none;\n    box-sizing: border-box;\n}\n\n.tools-ai-form .row select:focus {\n    border-color: #409EFF;\n}\n\n.tools-ai-form button:disabled {\n    opacity: 0.6;\n    cursor: default;\n}\n\n.tools-ai-form .tools-ai-actions {\n    gap: 6px;\n    margin-bottom: 0;\n}\n\n.tools-ai-form .tools-ai-actions .cx-btn {\n    margin: 0 !important;\n}\n\n.tools-ai-hint {\n    font-size: 11px;\n    color: #999;\n}\n\n.tools-notice-content .log {\n    height: auto;\n    width: auto;\n    text-align: left;\n    border: 1px solid #eee;\n    overflow: hidden;\n}\n\n.tools-notice-content .log p {\n    margin: 0;\n    padding: 3px 6px;\n    color: #666;\n    font-size: 12px;\n    font-weight: 400;\n    font-family: Arial, Helvetica, sans-serif;\n    line-height: 18px;\n    text-align: left;\n    white-space: pre-wrap;\n    word-break: break-word;\n    overflow-wrap: break-word;\n}\n\n/* \u6EDA\u52A8\u69FD */\n::-webkit-scrollbar {\n    width: 10px;\n    height: 10px;\n}\n\n::-webkit-scrollbar-track {\n    border-radius: 3px;\n    background: rgba(0, 0, 0, 0.06);\n    -webkit-box-shadow: inset 0 0 5px rgba(0, 0, 0, 0.08);\n}\n\n/* \u6EDA\u52A8\u6761\u6ED1\u5757 */\n::-webkit-scrollbar-thumb {\n    border-radius: 3px;\n    background: rgba(0, 0, 0, 0.12);\n    -webkit-box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.2);\n}\n\n/* \u590D\u9009\u6846 */\n.switch {\n    margin: 2px auto;\n    display: inline-flex;\n    align-items: center;\n    width: auto;\n}\n.checkbox-input {\n    display: none\n}\n.checkbox {\n    -webkit-transition: background-color 0.3s;\n    transition: background-color 0.3s;\n    background-color: #fff;\n    border: 1px solid #d7d7d7;\n    border-radius: 50px;\n    width: 16px;\n    height: 16px;\n    vertical-align:middle;\n    margin: 0 5px;\n}\n.checkbox-input:checked+.checkbox {\n    background-color: #409EFF;\n}\n.checkbox-input:checked+.checkbox:after {\n    // content: \"\u221A\";\n    display: inline-block;\n    height: 100%;\n    width: 100%;\n    color: #fff;\n    text-align: center;\n    line-height: 16px;\n    font-size: 12px;\n    box-shadow: 0 0 4px #409EFF;\n}\n\n.tools-logger-panel:hover,\n.tools-logger-panel:focus-within {\n    background: #fff;\n}\n\n.tools-logger-panel .head:active {\n    background-color: #E5E5E5;\n}\n\n.tools-logger-panel > .close {\n    margin: 2px;\n}\n\n";
     var style = document.createElement("style");
     style.innerHTML = css;
     document.body.appendChild(style);

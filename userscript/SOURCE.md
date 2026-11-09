@@ -382,6 +382,15 @@ catch (e) { Application.App.log.Warn("AI 答题异常（第 N 题）：" + e); }
 
 另外 `getOption/getContent/click` 也都加了 null 保护（没有 `input` 时退化为取 `li` 的文字、直接 `el.click()`）。
 
+### 追加修复：判断题的 Fill 用错字段 + 通知条显示 bug
+
+1. **判断题 `Fill()` 读的是 `content` 布尔值**：原版是给题库用的，`answer.correct[0].content` 是 `true/false`；AI 路径里我们传的是 `{option: "true"/"false", content: ""}`，于是永远走 `options[1]`（错）。现在改成先看 `content`，再看 `option`，最后按「对/正确/√」与「错/错误/×」去匹配真实选项。
+2. **页面脚本在 `click()` 里抛错会带崩整题**：把 `input.click()` 和 `AddNotice()` 都包了 try/catch，页面自己的报错不影响我们继续。
+3. **通知条看起来"花了"**：面板背景原来是 `rgba(255,255,255,0.3)`（70% 透明），底下的课程页面文字透上来，像叠在一起；日志行固定 26px 高 + `text-align:center`，长日志会被裁掉、错位。
+   - 面板背景改成 `rgba(255,255,255,0.98)`，悬停 `#fff`
+   - 日志行改自动高度、左对齐、12px/18px、`white-space: pre-wrap; word-break: break-word`
+   - 状态文字加 `max-width` + 省略号，不再把行撑破
+
 ## 构建
 
 ```bash
