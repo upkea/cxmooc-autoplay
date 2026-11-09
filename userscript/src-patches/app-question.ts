@@ -382,6 +382,20 @@ export class ToolsQuestionBankFacade implements QuestionBankFacade {
                     title = "";
                 }
                 Application.App.log.Info("AI 答题中（" + (i + 1) + "/" + list.length + "）：" + title.substring(0, 40));
+                // 诊断：把实际发给 AI 的选项打出来（内容为空说明页面没取到选项文字）
+                try {
+                    if (options.length > 0) {
+                        let parts: string[] = [];
+                        for (let k = 0; k < options.length; k++) {
+                            parts.push(String(options[k].option) + "=" + String(options[k].content || "").slice(0, 20));
+                        }
+                        Application.App.log.Info("AI 选项：" + parts.join(" | "));
+                    } else {
+                        Application.App.log.Info("AI 选项：没取到选项文字");
+                    }
+                } catch (e) {
+                    // ignore
+                }
 
                 const ret = await AskAI(title, type, options);
                 if (!ret.ok || !ret.correct || ret.correct.length == 0) {

@@ -58,7 +58,7 @@ function typeText(type: TopicType): string {
 }
 
 export function BuildAIPrompt(topic: string, type: TopicType, options: Option[]): string {
-    let prompt = "请回答下面的网课题目。\n";
+    let prompt = "你是网课考试助手，请认真作答下面这道题。\n";
     prompt += "题型：" + typeText(type) + "\n";
     prompt += "题目：" + topic + "\n";
     if (options && options.length > 0) {
@@ -67,21 +67,24 @@ export function BuildAIPrompt(topic: string, type: TopicType, options: Option[])
             prompt += String(options[i].option) + ". " + String(options[i].content || "") + "\n";
         }
     }
+    prompt += "\n作答要求：\n";
+    prompt += "1. 先在脑子里逐项判断每个选项，不要输出长篇分析；\n";
+    prompt += "2. 最后单独一行输出最终答案，格式必须是「答案：X」；\n";
     switch (type) {
         case 1:
-            prompt += "\n要求：只输出一个正确选项的字母（例如 A），不要输出任何解释。";
+            prompt += "3. 单选：X 是一个字母，例如「答案：B」。\n";
             break;
         case 2:
-            prompt += "\n要求：只输出所有正确选项的字母，按字母顺序连在一起（例如 ABD），不要输出任何解释。";
+            prompt += "3. 多选：X 是全部正确项的字母（按字母顺序连写，1~4 个都可能，不要一律全选），例如「答案：ABD」。\n";
             break;
         case 3:
-            prompt += "\n要求：只输出「对」或「错」，不要输出任何解释。";
+            prompt += "3. 判断：X 是「对」或「错」，例如「答案：对」。\n";
             break;
         case 4:
-            prompt += "\n要求：按空依次输出答案，每行一个，行首不要带序号，不要输出任何解释。";
+            prompt += "3. 填空：每个空一行，每行都以「答案：」开头，例如第 1 空「答案：第一个空的内容」。不要带序号。\n";
             break;
         default:
-            prompt += "\n要求：只输出答案本身（选项字母或「对/错」），不要解释。";
+            prompt += "3. X 是答案本身。\n";
     }
     return prompt;
 }
@@ -102,29 +105,56 @@ export function ParseAIAnswer(raw: string, type: TopicType, options: Option[]): 
     if (!text) {
         return null;
     }
+    // 提示词要求最后输出「答案：X」，优先只解析这一段，避免推理过程里的字母干扰
+    let finalAns = "";
+    try {
+        let re = /(?:正确答案|答案)\s*[:：]\s*([^\n]*)/g;
+        let m: RegExpExecArray;
+        while ((m = re.exec(text)) !== null) {
+            if (m[1] && m[1].trim()) {
+                finalAns = m[1].trim();
+            }
+        }
+    } catch (e) {
+        finalAns = "";
+    }
+    const textAns = finalAns || text;
     const validLetters = uniq((options || []).map(o => String(o.option || "").toUpperCase())
         .filter(s => /^[A-H]$/.test(s)));
 
     if (type == 3) {
-        const neg = /(错|错误|不对|不正确|×|✗|✘|FALSE)/i.test(text);
-        const pos = /(对|正确|√|✓|✔|TRUE)/i.test(text);
+        const neg = /(错|错误|不对|不正确|×|✗|✘|FALSE)/i.test(textAns);
+        const pos = /(对|正确|√|✓|✔|TRUE)/i.test(textAns);
         if (neg && !pos) {
             return [{option: false, content: false}];
         }
         if (pos && !neg) {
             return [{option: true, content: true}];
         }
-        return text.indexOf("对") >= 0 ? [{option: true, content: true}] : [{option: false, content: false}];
+        return textAns.indexOf("对") >= 0 ? [{option: true, content: true}] : [{option: false, content: false}];
     }
 
     if (type == 4) {
-        const lines = text.split(/\r?\n/)
+        // 优先取所有「答案：xxx」行（每空一行）
+        let ansLines: string[] = [];
+        try {
+            let lines = text.split(/\r?\n/);
+            for (let i = 0; i < lines.length; i++) {
+                let m = lines[i].match(/(?:正确答案|答案)\s*[:：]\s*(.+)$/);
+                if (m && m[1] && m[1].trim()) {
+                    ansLines.push(m[1].trim());
+                }
+            }
+        } catch (e) {
+            ansLines = [];
+        }
+        let source = ansLines.length > 0 ? ansLines : text.split(/\r?\n/)
             .map(s => s.replace(/^\s*(?:第)?\s*\d+\s*(?:空|题)?\s*[.、:：)）]\s*/, "").trim())
             .filter(s => s.length > 0 && !/^\d+$/.test(s));
-        const n = (options && options.length) ? options.length : lines.length;
+        const n = (options && options.length) ? options.length : source.length;
         const res: Option[] = [];
         for (let i = 0; i < n; i++) {
-            const content = lines[i] !== undefined ? lines[i] : (lines[0] || "");
+            const content = source[i] !== undefined ? source[i] : (source[0] || "");
             res.push({option: String(i + 1), content: content});
         }
         if (res.length == 1) {
@@ -137,7 +167,7 @@ export function ParseAIAnswer(raw: string, type: TopicType, options: Option[]): 
     const byContent: Option[] = [];
     for (let i = 0; i < (options || []).length; i++) {
         const content = String(options[i].content || "").trim();
-        if (content.length >= 2 && text.indexOf(content) >= 0) {
+        if (content.length >= 2 && textAns.indexOf(content) >= 0) {
             byContent.push({option: options[i].option, content: ""});
         }
     }
@@ -146,7 +176,7 @@ export function ParseAIAnswer(raw: string, type: TopicType, options: Option[]): 
     }
 
     // 字母：优先整行只有字母的情况
-    const lines = text.split(/\r?\n/).map(s => s.trim()).filter(s => s.length > 0);
+    const lines = textAns.split(/\r?\n/).map(s => s.trim()).filter(s => s.length > 0);
     let letters: string[] = [];
     for (let i = 0; i < lines.length; i++) {
         if (/^[A-Ha-h\s.、,，]+$/.test(lines[i])) {
@@ -154,7 +184,7 @@ export function ParseAIAnswer(raw: string, type: TopicType, options: Option[]): 
         }
     }
     if (letters.length == 0) {
-        letters = text.toUpperCase().match(/\b[A-H]\b/g) || [];
+        letters = textAns.toUpperCase().match(/\b[A-H]\b/g) || [];
     }
     letters = uniq(letters).filter(l => validLetters.length == 0 || validLetters.indexOf(l) >= 0);
     if (letters.length == 0) {
@@ -166,17 +196,18 @@ export function ParseAIAnswer(raw: string, type: TopicType, options: Option[]): 
     return letters.map(l => ({option: l, content: ""}));
 }
 
-export function AskAI(topic: string, type: TopicType, options: Option[]): Promise<AIResult> {    return new Promise<AIResult>(resolve => {
+export function AskAI(topic: string, type: TopicType, options: Option[]): Promise<AIResult> {
+    return new Promise<AIResult>(resolve => {
         const conf = AIConfig();
         if (!conf.key) {
             return resolve({ok: false, correct: null, error: "未配置 ai_key"});
         }
         const body = JSON.stringify({
             model: conf.model,
-            temperature: 0.1,
-            max_tokens: 400,
+            temperature: 0,
+            max_tokens: 700,
             messages: [
-                {role: "system", content: "你是一名严谨的答题助手，只按要求输出答案本身，绝不输出解释或多余文字。"},
+                {role: "system", content: "你是严谨的网课答题助手：先判断，再按格式输出最终答案。"},
                 {role: "user", content: BuildAIPrompt(topic, type, options)},
             ],
         });

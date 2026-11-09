@@ -188,23 +188,30 @@ abstract class cxQuestion implements Question {
     }
 
     public GetTopic(): string {
+        let raw = "";
         try {
-            let ret = this.processor.GetTopic(this.el);
-            if (ret != undefined && ret != null && String(ret).trim() != "") {
-                return String(ret).trim();
+            raw = String(this.processor.GetTopic(this.el) || "");
+        } catch (e) {
+            raw = "";
+        }
+        if (!raw.trim()) {
+            // 兜底：直接取题干区域的文字
+            try {
+                let title = <HTMLElement>this.el.querySelector(".Zy_TItle,.Cy_TItle");
+                raw = (title ? title.innerText : this.el.innerText) || "";
+            } catch (e) {
+                raw = "";
             }
-        } catch (e) {
-            // 页面结构变了，走下面的兜底
+        } else {
+            // processor 返回的是 innerHTML，去掉标签再给 AI
+            raw = raw.replace(/<[^>]*>/g, " ");
         }
-        // 兜底：直接取题干区域的文字
-        try {
-            let title = <HTMLElement>this.el.querySelector(".Zy_TItle,.Cy_TItle");
-            let text = (title ? title.innerText : this.el.innerText) || "";
-            text = text.replace(/[\r\n\t]+/g, " ").replace(/\s{2,}/g, " ").trim();
-            return text.substring(0, 300);
-        } catch (e) {
-            return "";
-        }
+        // 去掉【单选题】这类题型标签、去掉（2.0分）、还原实体、压缩空白
+        raw = raw.replace(/【[^】]{0,20}】/g, " ");
+        raw = raw.replace(/[（(]\s*[\d.]+\s*分\s*[)）]/g, " ");
+        raw = raw.replace(/&nbsp;/gi, " ").replace(/&lt;/gi, "<").replace(/&gt;/gi, ">").replace(/&amp;/gi, "&");
+        raw = raw.replace(/[\r\n\t]+/g, " ").replace(/\s{2,}/g, " ").trim();
+        return raw.substring(0, 300);
     }
 
     public RemoveNotice() {
