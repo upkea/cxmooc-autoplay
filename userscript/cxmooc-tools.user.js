@@ -361,8 +361,44 @@ exports.SystemConfig = SystemConfig;
 
 "use strict";
 
+var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+};
+var __generator = (this && this.__generator) || function (thisArg, body) {
+    var _ = { label: 0, sent: function() { if (t[0] & 1) throw t[1]; return t[1]; }, trys: [], ops: [] }, f, y, t, g;
+    return g = { next: verb(0), "throw": verb(1), "return": verb(2) }, typeof Symbol === "function" && (g[Symbol.iterator] = function() { return this; }), g;
+    function verb(n) { return function (v) { return step([n, v]); }; }
+    function step(op) {
+        if (f) throw new TypeError("Generator is already executing.");
+        while (_) try {
+            if (f = 1, y && (t = op[0] & 2 ? y["return"] : op[0] ? y["throw"] || ((t = y["return"]) && t.call(y), 0) : y.next) && !(t = t.call(y, op[1])).done) return t;
+            if (y = 0, t) op = [op[0] & 2, t.value];
+            switch (op[0]) {
+                case 0: case 1: t = op; break;
+                case 4: _.label++; return { value: op[1], done: false };
+                case 5: _.label++; y = op[1]; op = [0]; continue;
+                case 7: op = _.ops.pop(); _.trys.pop(); continue;
+                default:
+                    if (!(t = _.trys, t = t.length > 0 && t[t.length - 1]) && (op[0] === 6 || op[0] === 2)) { _ = 0; continue; }
+                    if (op[0] === 3 && (!t || (op[1] > t[0] && op[1] < t[3]))) { _.label = op[1]; break; }
+                    if (op[0] === 6 && _.label < t[1]) { _.label = t[1]; t = op; break; }
+                    if (t && _.label < t[2]) { _.label = t[2]; _.ops.push(op); break; }
+                    if (t[2]) _.ops.pop();
+                    _.trys.pop(); continue;
+            }
+            op = body.call(thisArg, _);
+        } catch (e) { op = [6, e]; y = 0; } finally { f = t = 0; }
+        if (op[0] & 5) throw op[1]; return { value: op[0] ? op[1] : void 0, done: true };
+    }
+};
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.AskAI = exports.ParseAIAnswer = exports.BuildAIPrompt = exports.AIEnabled = exports.AIConfig = void 0;
+exports.TestAIConnection = exports.AskAI = exports.ParseAIAnswer = exports.BuildAIPrompt = exports.AIEnabled = exports.AIConfig = void 0;
 var application_1 = __webpack_require__(/*! ../application */ "./src/internal/application.ts");
 var utils_1 = __webpack_require__(/*! ../utils/utils */ "./src/internal/utils/utils.ts");
 function cfg(key, def) {
@@ -569,6 +605,87 @@ function AskAI(topic, type, options) {
     });
 }
 exports.AskAI = AskAI;
+function TestAIConnection(conf) {
+    var _this = this;
+    return new Promise(function (resolve) {
+        conf = conf || AIConfig();
+        var base = (conf.base || "").replace(/\/+$/, "");
+        var t0 = Date.now();
+        var finish = function (r) {
+            r.ms = Date.now() - t0;
+            resolve(r);
+        };
+        if (!conf.key) {
+            return finish({ ok: false, ms: 0, error: "还没填 API Key" });
+        }
+        if (!base) {
+            return finish({ ok: false, ms: 0, error: "还没填接口地址" });
+        }
+        var url = base + "/chat/completions";
+        var payload = JSON.stringify({
+            model: conf.model,
+            max_tokens: 4,
+            temperature: 0,
+            messages: [{ role: "user", content: "ping" }],
+        });
+        var handle = function (status, text) {
+            if (status >= 200 && status < 300) {
+                return finish({ ok: true, ms: 0, status: status });
+            }
+            if (status == 401 || status == 403) {
+                return finish({ ok: false, ms: 0, status: status, error: "Key 不对或没有权限(HTTP " + status + ")" });
+            }
+            if (status == 404) {
+                return finish({ ok: false, ms: 0, status: status, error: "接口地址不对(HTTP 404)，检查接口地址" });
+            }
+            if (status == 429) {
+                return finish({ ok: false, ms: 0, status: status, error: "请求太频繁或额度用完了(HTTP 429)" });
+            }
+            if (status == 0) {
+                return finish({ ok: false, ms: 0, status: status, error: "网络错误：连不上接口" });
+            }
+            return finish({ ok: false, ms: 0, status: status, error: "HTTP " + status + "：" + (text || "").slice(0, 80) });
+        };
+        try {
+            var gx = window.GM_xmlhttpRequest;
+            if (typeof gx == "function") {
+                gx({
+                    method: "POST",
+                    url: url,
+                    headers: { "Content-Type": "application/json", "Authorization": "Bearer " + conf.key },
+                    data: payload,
+                    timeout: 15000,
+                    onload: function (resp) { return handle(resp.status, resp.responseText); },
+                    onerror: function () { return finish({ ok: false, ms: 0, error: "网络错误：连不上接口" }); },
+                    ontimeout: function () { return finish({ ok: false, ms: 0, error: "请求超时（15 秒）" }); },
+                });
+                return;
+            }
+            fetch(url, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "Authorization": "Bearer " + conf.key },
+                body: payload,
+            }).then(function (r) { return __awaiter(_this, void 0, void 0, function () {
+                var text;
+                return __generator(this, function (_a) {
+                    switch (_a.label) {
+                        case 0: return [4 /*yield*/, r.text()];
+                        case 1:
+                            text = _a.sent();
+                            handle(r.status, text);
+                            return [2 /*return*/];
+                    }
+                });
+            }); }).catch(function () {
+                finish({ ok: false, ms: 0, error: "网络错误：连不上接口" });
+            });
+        }
+        catch (e) {
+            finish({ ok: false, ms: 0, error: String(e) });
+        }
+    });
+}
+exports.TestAIConnection = TestAIConnection;
 
 
 /***/ }),
@@ -1924,6 +2041,42 @@ exports.Hook = Hook;
 
 "use strict";
 
+var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+};
+var __generator = (this && this.__generator) || function (thisArg, body) {
+    var _ = { label: 0, sent: function() { if (t[0] & 1) throw t[1]; return t[1]; }, trys: [], ops: [] }, f, y, t, g;
+    return g = { next: verb(0), "throw": verb(1), "return": verb(2) }, typeof Symbol === "function" && (g[Symbol.iterator] = function() { return this; }), g;
+    function verb(n) { return function (v) { return step([n, v]); }; }
+    function step(op) {
+        if (f) throw new TypeError("Generator is already executing.");
+        while (_) try {
+            if (f = 1, y && (t = op[0] & 2 ? y["return"] : op[0] ? y["throw"] || ((t = y["return"]) && t.call(y), 0) : y.next) && !(t = t.call(y, op[1])).done) return t;
+            if (y = 0, t) op = [op[0] & 2, t.value];
+            switch (op[0]) {
+                case 0: case 1: t = op; break;
+                case 4: _.label++; return { value: op[1], done: false };
+                case 5: _.label++; y = op[1]; op = [0]; continue;
+                case 7: op = _.ops.pop(); _.trys.pop(); continue;
+                default:
+                    if (!(t = _.trys, t = t.length > 0 && t[t.length - 1]) && (op[0] === 6 || op[0] === 2)) { _ = 0; continue; }
+                    if (op[0] === 3 && (!t || (op[1] > t[0] && op[1] < t[3]))) { _.label = op[1]; break; }
+                    if (op[0] === 6 && _.label < t[1]) { _.label = t[1]; t = op; break; }
+                    if (t && _.label < t[2]) { _.label = t[2]; _.ops.push(op); break; }
+                    if (t[2]) _.ops.pop();
+                    _.trys.pop(); continue;
+            }
+            op = body.call(thisArg, _);
+        } catch (e) { op = [6, e]; y = 0; } finally { f = t = 0; }
+        if (op[0] & 5) throw op[1]; return { value: op[0] ? op[1] : void 0, done: true };
+    }
+};
 var __spreadArrays = (this && this.__spreadArrays) || function () {
     for (var s = 0, i = 0, il = arguments.length; i < il; i++) s += arguments[i].length;
     for (var r = Array(s), k = 0, i = 0; i < il; i++)
@@ -1936,6 +2089,7 @@ exports.EmptyLog = exports.PageLog = exports.ConsoleLog = void 0;
 var application_1 = __webpack_require__(/*! ../application */ "./src/internal/application.ts");
 __webpack_require__(/*! ../../views/common */ "./src/views/common.ts");
 var utils_1 = __webpack_require__(/*! @App/internal/utils/utils */ "./src/internal/utils/utils.ts");
+var ai_1 = __webpack_require__(/*! @App/internal/app/ai */ "./src/internal/app/ai.ts");
 // 开发者工具f12处打印日志
 var ConsoleLog = /** @class */ (function () {
     function ConsoleLog() {
@@ -1994,7 +2148,7 @@ var PageLog = /** @class */ (function () {
         window.addEventListener("load", function () {
             _this.div = document.createElement("div");
             // 主要布局
-            _this.div.innerHTML = "\n            <div class=\"head\" id=\"tools-head\"> \n               <span>\u5C0F\u5DE5\u5177\u901A\u77E5\u6761</span> \n               <label class=\"switch\" style=\"width:90px\">\n                  <input class=\"checkbox-input\" id=\"checkbox\" type=\"checkbox\" checked=\"checked\">\n                  <label class=\"checkbox\" for=\"checkbox\"></label>\n                  <span>\u684C\u9762\u901A\u77E5</span>\n               </label>\n               <span class=\"close\" style=\"float:right; cursor:pointer; margin-right:5px;\">x</span>\n            </div>\n            <div class=\"tools-ai-bar\" id=\"tools-ai-bar\">\n               <button class=\"cx-btn tools-ai-btn\" id=\"tools-ai-btn\" title=\"\u586B\u5199\u63A5\u53E3\u5730\u5740 / API Key / \u6A21\u578B\u540D\u79F0\">\u66F4\u6539API</button>\n               <label class=\"switch\">\n                  <input class=\"checkbox-input\" id=\"ai-auto-checkbox\" type=\"checkbox\">\n                  <label class=\"checkbox\" for=\"ai-auto-checkbox\"></label>\n                  <span>\u81EA\u52A8\u7B54\u9898</span>\n               </label>\n               <span class=\"tools-ai-status\" id=\"ai-status\"></span>\n            </div>\n            <div class=\"tools-ai-form\" id=\"tools-ai-form\">\n               <div class=\"row\"><span>\u63A5\u53E3\u5730\u5740</span><input id=\"ai-base-input\" type=\"text\" spellcheck=\"false\" placeholder=\"https://api.deepseek.com/v1\"></div>\n               <div class=\"row\"><span>API Key</span><input id=\"ai-key-input\" type=\"password\" spellcheck=\"false\" placeholder=\"sk-...\"></div>\n               <div class=\"row\"><span>\u6A21\u578B\u540D</span><input id=\"ai-model-input\" type=\"text\" spellcheck=\"false\" placeholder=\"deepseek-chat\"></div>\n               <div class=\"row tools-ai-actions\">\n                  <button class=\"cx-btn\" id=\"ai-save-btn\">\u4FDD\u5B58</button>\n                  <button class=\"cx-btn\" id=\"ai-cancel-btn\">\u53D6\u6D88</button>\n                  <span class=\"tools-ai-hint\">\u4E0D\u4F1A\u586B\uFF1F\u770B docs/AI-GUIDE.md</span>\n               </div>\n            </div>\n            <div class=\"tools-btn-bar\" id=\"tools-btn-bar\"></div>\n            <div class=\"main\">\n               <div class=\"tools-notice-content\"></div>\n            </div>\n            ";
+            _this.div.innerHTML = "\n            <div class=\"head\" id=\"tools-head\"> \n               <span>\u5C0F\u5DE5\u5177\u901A\u77E5\u6761</span> \n               <label class=\"switch\" style=\"width:90px\">\n                  <input class=\"checkbox-input\" id=\"checkbox\" type=\"checkbox\" checked=\"checked\">\n                  <label class=\"checkbox\" for=\"checkbox\"></label>\n                  <span>\u684C\u9762\u901A\u77E5</span>\n               </label>\n               <span class=\"close\" style=\"float:right; cursor:pointer; margin-right:5px;\">x</span>\n            </div>\n            <div class=\"tools-ai-bar\" id=\"tools-ai-bar\">\n               <button class=\"cx-btn tools-ai-btn\" id=\"tools-ai-btn\" title=\"\u9009\u670D\u52A1\u5546\u3001\u7C98\u8D34 Key\uFF0C\u63A5\u53E3\u548C\u6A21\u578B\u81EA\u52A8\u586B\u597D\">\u66F4\u6539API</button>\n               <label class=\"switch\">\n                  <input class=\"checkbox-input\" id=\"ai-auto-checkbox\" type=\"checkbox\">\n                  <label class=\"checkbox\" for=\"ai-auto-checkbox\"></label>\n                  <span>\u81EA\u52A8\u7B54\u9898</span>\n               </label>\n               <span class=\"tools-ai-status\" id=\"ai-status\">\u672A\u914D\u7F6E</span>\n            </div>\n            <div class=\"tools-ai-form\" id=\"tools-ai-form\">\n               <div class=\"row\"><span>\u670D\u52A1\u5546</span>\n                  <select id=\"ai-provider-select\">\n                     <option value=\"zhipu\">\u667A\u8C31 GLM\uFF08glm-4-flash\uFF0C\u514D\u8D39\uFF09</option>\n                     <option value=\"siliconflow\">\u7845\u57FA\u6D41\u52A8</option>\n                     <option value=\"deepseek\">DeepSeek</option>\n                     <option value=\"custom\">\u81EA\u5B9A\u4E49\uFF08\u81EA\u5DF1\u586B\u5730\u5740\u548C\u6A21\u578B\uFF09</option>\n                  </select>\n               </div>\n               <div class=\"row\"><span>API Key</span><input id=\"ai-key-input\" type=\"password\" spellcheck=\"false\" placeholder=\"\u7C98\u8D34\u4F60\u7533\u8BF7\u5230\u7684 key\"></div>\n               <div class=\"row\"><span>\u63A5\u53E3\u5730\u5740</span><input id=\"ai-base-input\" type=\"text\" spellcheck=\"false\"></div>\n               <div class=\"row\"><span>\u6A21\u578B\u540D</span><input id=\"ai-model-input\" type=\"text\" spellcheck=\"false\"></div>\n               <div class=\"row tools-ai-actions\">\n                  <button class=\"cx-btn\" id=\"ai-test-btn\">\u6D4B\u8BD5\u8FDE\u63A5</button>\n                  <button class=\"cx-btn\" id=\"ai-save-btn\">\u4FDD\u5B58</button>\n                  <button class=\"cx-btn\" id=\"ai-cancel-btn\">\u53D6\u6D88</button>\n                  <span class=\"tools-ai-hint\" id=\"ai-test-result\"></span>\n               </div>\n            </div>\n            <div class=\"tools-btn-bar\" id=\"tools-btn-bar\"></div>\n            <div class=\"main\">\n               <div class=\"tools-notice-content\"></div>\n            </div>\n            ";
             _this.div.className = "tools-logger-panel";
             document.body.appendChild(_this.div);
             _this.el = _this.div.querySelector(".tools-notice-content");
@@ -2067,59 +2221,146 @@ var PageLog = /** @class */ (function () {
                     // ignore
                 }
             };
+            var AI_PRESETS = {
+                zhipu: { base: "https://open.bigmodel.cn/api/paas/v4", model: "glm-4-flash" },
+                siliconflow: { base: "https://api.siliconflow.cn/v1", model: "Qwen/Qwen2.5-7B-Instruct" },
+                deepseek: { base: "https://api.deepseek.com/v1", model: "deepseek-chat" },
+                custom: { base: "", model: "" },
+            };
             var aiBtn = _this.div.querySelector("#tools-ai-btn");
             var aiForm = _this.div.querySelector("#tools-ai-form");
+            var aiProvider = _this.div.querySelector("#ai-provider-select");
             var aiBaseInput = _this.div.querySelector("#ai-base-input");
             var aiKeyInput = _this.div.querySelector("#ai-key-input");
             var aiModelInput = _this.div.querySelector("#ai-model-input");
             var aiAuto = _this.div.querySelector("#ai-auto-checkbox");
             var aiStatus = _this.div.querySelector("#ai-status");
-            var fillAIApiForm = function () {
-                aiBaseInput.value = readConf("ai_base", "https://api.siliconflow.cn/v1");
-                aiKeyInput.value = readConf("ai_key", "");
-                aiModelInput.value = readConf("ai_model", "Qwen/Qwen2.5-7B-Instruct");
+            var aiTestBtn = _this.div.querySelector("#ai-test-btn");
+            var aiTestResult = _this.div.querySelector("#ai-test-result");
+            var setAIStatus = function (text, color, title) {
+                aiStatus.innerText = text;
+                aiStatus.style.color = color;
+                aiStatus.title = title || "";
             };
+            // 选服务商 -> 自动填好接口地址和模型（只有「自定义」才允许手改）
+            var applyAIProvider = function (id) {
+                var preset = AI_PRESETS[id];
+                if (id != "custom" && preset) {
+                    aiBaseInput.value = preset.base;
+                    aiModelInput.value = preset.model;
+                }
+                var readonly = id != "custom";
+                aiBaseInput.readOnly = readonly;
+                aiModelInput.readOnly = readonly;
+                aiBaseInput.style.background = readonly ? "#f3f3f3" : "#fff";
+                aiModelInput.style.background = readonly ? "#f3f3f3" : "#fff";
+            };
+            var fillAIApiForm = function () {
+                var base = readConf("ai_base", AI_PRESETS.zhipu.base);
+                aiKeyInput.value = readConf("ai_key", "");
+                aiBaseInput.value = base;
+                aiModelInput.value = readConf("ai_model", AI_PRESETS.zhipu.model);
+                var matched = "custom";
+                for (var k in AI_PRESETS) {
+                    if (AI_PRESETS[k].base && AI_PRESETS[k].base == base) {
+                        matched = k;
+                        break;
+                    }
+                }
+                aiProvider.value = matched;
+                applyAIProvider(matched);
+            };
+            var formConf = function () {
+                var base = aiBaseInput.value.trim().replace(/\/+$/, "");
+                if (base && base.indexOf("http") != 0) {
+                    base = "https://" + base;
+                }
+                return { base: base, key: aiKeyInput.value.trim(), model: aiModelInput.value.trim() || AI_PRESETS.zhipu.model };
+            };
+            // 测试连接：fromForm=true 用表单里的值测（不必先保存）
+            var runAITest = function (fromForm) { return __awaiter(_this, void 0, void 0, function () {
+                var conf, ret;
+                return __generator(this, function (_a) {
+                    switch (_a.label) {
+                        case 0:
+                            conf = fromForm ? formConf() : {
+                                base: readConf("ai_base", AI_PRESETS.zhipu.base).replace(/\/+$/, ""),
+                                key: readConf("ai_key", ""),
+                                model: readConf("ai_model", AI_PRESETS.zhipu.model),
+                            };
+                            if (!conf.key) {
+                                setAIStatus("● 未配置 Key", "#c33");
+                                if (fromForm) {
+                                    aiTestResult.innerText = "先填 API Key";
+                                    aiTestResult.style.color = "#c33";
+                                }
+                                return [2 /*return*/];
+                            }
+                            setAIStatus("● 检测中…", "#888");
+                            aiTestBtn.disabled = true;
+                            if (fromForm) {
+                                aiTestResult.innerText = "检测中…";
+                                aiTestResult.style.color = "#888";
+                            }
+                            return [4 /*yield*/, ai_1.TestAIConnection(conf)];
+                        case 1:
+                            ret = _a.sent();
+                            aiTestBtn.disabled = false;
+                            if (ret.ok) {
+                                setAIStatus("● 已连接", "#3a9", conf.model + " · " + ret.ms + "ms");
+                                if (fromForm) {
+                                    aiTestResult.innerText = "连接成功 " + ret.ms + "ms";
+                                    aiTestResult.style.color = "#3a9";
+                                }
+                                this.Info("AI 连接正常（" + conf.model + "，" + ret.ms + "ms）");
+                            }
+                            else {
+                                setAIStatus("● 连接失败", "#c33", ret.error);
+                                if (fromForm) {
+                                    aiTestResult.innerText = ret.error || "连接失败";
+                                    aiTestResult.style.color = "#c33";
+                                }
+                                this.Warn("AI 连接失败：" + (ret.error || "未知错误"));
+                            }
+                            return [2 /*return*/];
+                    }
+                });
+            }); };
             var refreshAIStatus = function () {
-                var on = readConf("ai_enable", "true") != "false";
-                var key = readConf("ai_key", "");
-                aiAuto.checked = on;
-                if (!on) {
-                    aiStatus.innerText = "自动答题：关";
-                    aiStatus.style.color = "#c33";
+                aiAuto.checked = readConf("ai_enable", "true") != "false";
+                if (!aiAuto.checked) {
+                    setAIStatus("● 自动答题：关", "#c33");
+                    return;
                 }
-                else if (!key) {
-                    aiStatus.innerText = "未填 Key";
-                    aiStatus.style.color = "#c33";
-                }
-                else {
-                    aiStatus.innerText = "已配置";
-                    aiStatus.style.color = "#3a9";
-                }
+                runAITest(false);
             };
             fillAIApiForm();
             refreshAIStatus();
+            aiProvider.onchange = function () {
+                applyAIProvider(aiProvider.value);
+                aiTestResult.innerText = "";
+            };
             aiBtn.onclick = function () {
                 if (aiForm.style.display == "block") {
                     aiForm.style.display = "none";
                     return;
                 }
                 fillAIApiForm();
+                aiTestResult.innerText = "";
                 aiForm.style.display = "block";
             };
+            aiTestBtn.onclick = function () {
+                runAITest(true);
+            };
             _this.div.querySelector("#ai-save-btn").onclick = function () {
-                var base = aiBaseInput.value.trim().replace(/\/+$/, "");
-                var key = aiKeyInput.value.trim();
-                var model = aiModelInput.value.trim();
-                if (base && base.indexOf("http") != 0) {
-                    base = "https://" + base;
-                }
-                writeConf("ai_base", base || "https://api.siliconflow.cn/v1");
-                writeConf("ai_key", key);
-                writeConf("ai_model", model || "Qwen/Qwen2.5-7B-Instruct");
+                var conf = formConf();
+                writeConf("ai_base", conf.base || AI_PRESETS.zhipu.base);
+                writeConf("ai_key", conf.key);
+                writeConf("ai_model", conf.model);
                 aiForm.style.display = "none";
-                refreshAIStatus();
-                _this.Info("AI 配置已保存：" + (base || "默认接口") + " / " +
-                    (model || "默认模型") + (key ? "" : "（Key 为空，自动答题不会生效）"));
+                _this.Info("AI 配置已保存：" + (conf.base || "默认接口") + " / " + conf.model +
+                    (conf.key ? "" : "（Key 为空，自动答题不会生效）"));
+                runAITest(false);
             };
             _this.div.querySelector("#ai-cancel-btn").onclick = function () {
                 aiForm.style.display = "none";
@@ -2127,8 +2368,8 @@ var PageLog = /** @class */ (function () {
             };
             aiAuto.addEventListener("change", function () {
                 writeConf("ai_enable", aiAuto.checked ? "true" : "false");
-                refreshAIStatus();
                 _this.Info(aiAuto.checked ? "自动答题已开启（用 AI 作答）" : "自动答题已关闭（改走原题库逻辑）");
+                refreshAIStatus();
             });
             setTimeout(function () {
                 application_1.Application.CheckUpdate(function (isnew, data) {
@@ -5635,7 +5876,7 @@ continue_watch_1.StartVideoGuard();
 /***/ (function(module, exports) {
 
 window.addEventListener("load", function () {
-    var css = "\n@keyframes aniripple  \n{\n    0%{\n        width:0px;\n        height:0px;\n        opacity:0.4;\n    }\n    100%{\n        width:500px;\n        height:500px;\n        opacity:0;\n    }\n}  \n\n#cxtools {\n    position: absolute;\n    left: 250px;\n    top: 2px;\n    width: 210px;\n    font-size: 0;\n}\n\n.cx-btn {\n    outline: none;\n    border: 0;\n    background: #7d9d35;\n    color: #fff;\n    border-radius: 4px;\n    padding: 2px 8px;\n    cursor: pointer;\n    font-size: 12px;\n    margin-left: 4px;\n}\n\n.cx-btn:hover {\n    box-shadow: 1px 1px 1px 1px #ccc;\n}\n\n.zhs-tools-btn {\n    color: #fff;\n    background: #ff9d34;\n    padding: 4px;\n    display: inline-block;\n    height: 24px;\n    font-size: 14px;\n    line-height: 24px;\n    margin:0;\n    cursor:pointer;\n}\n.btn-ripple{\n    position:absolute;\n    background:#000;\n    pointer-events:none;\n    transform:translate(-50%,-50%);\n    border-radius:50%;\n    animation:aniripple 1s linear infinite;\n}\n\n.zhs-start-btn{\n    background: #36ac36;\n}\n\n.zhs-start-btn:hover{\n    background: #3b8d3b;\n}\n\n#zhs-ytbn {\n    color: #fff;\n    background: #e777ff;\n}\n\n#zhs-ytbn:hover {\n    background: #e7b7f1;\n}\n\n.zhs-search-answer {\n    border: 0;\n    outline: none;\n    padding: 4px;\n}\n\n.zhs-search-answer:hover {\n    opacity: .85;\n}\n\n.mooc163-search{\n    background-color: #60b900;\n    display: block;\n    margin: 0 auto;\n}\n\n.tools-logger-panel{\n    width: 360px;\n    height: auto;\n    max-height: 470px;\n    color:#000;\n    position: fixed;\n    margin: 0 auto;\n    display: block;\n    font-size: 14px;\n    border-radius: 4px;\n    width: 340px;\n    text-align: center;\n    overflow: hidden;\n    left:60px;\n    top: 40px;\n    z-index: 100000;\n    background: rgba(256, 256, 256, 0.3);\n    box-shadow: 0px 0px 5px #bbb;\n}\n\n.head {\n    width: 100%;\n    height: 30px;\n    padding: 4px;\n    box-sizing: border-box;\n    cursor: move;\n    transition-property: opacity, background-color;\n    transition: 200ms ease-in-out;\n}\n\n.head span{\n    color:#000;\n    float:left;\n    font-weight: 550;\n}\n\n.status {\n    color: #67C23A;\n    font-weight: 600;\n}\n\n.tools-notice-content {\n    width: 100%;\n    height: 200px;\n    border-top:0px;\n    overflow-y: scroll;\n    overflow-x: hidden;\n}\n\n/* \u5C0F\u5DE5\u5177\u901A\u77E5\u6761\u91CC\u7684\u6309\u94AE\u680F\uFF08\u5F00\u59CB\u6302\u673A/\u79D2\u8FC7\u89C6\u9891/\u4E0B\u8F7D\u8D44\u6E90/\u4E0B\u8F7D\u5B57\u5E55\uFF09 */\n.tools-btn-bar {\n    display: flex;\n    flex-wrap: wrap;\n    gap: 4px;\n    padding: 6px 4px;\n    border-top: 1px solid #eee;\n    border-bottom: 1px solid #eee;\n    box-sizing: border-box;\n}\n\n.tools-btn-bar:empty {\n    display: none;\n}\n\n.tools-btn-bar .cx-btn {\n    margin: 0 !important;\n}\n\n/* \u5C0F\u5DE5\u5177\u901A\u77E5\u6761\u91CC\u7684 AI \u7B54\u9898\u680F\uFF08\u66F4\u6539API \u6309\u94AE + \u81EA\u52A8\u7B54\u9898\u5F00\u5173 + \u72B6\u6001\uFF09 */\n.tools-ai-bar {\n    display: flex;\n    align-items: center;\n    gap: 8px;\n    padding: 4px 6px;\n    border-top: 1px solid #eee;\n    border-bottom: 1px solid #eee;\n    box-sizing: border-box;\n    background: rgba(255, 255, 255, 0.5);\n}\n\n.tools-ai-bar .tools-ai-btn {\n    margin: 0 !important;\n}\n\n.tools-ai-bar .switch {\n    margin: 0;\n    width: auto;\n}\n\n.tools-ai-bar .switch span {\n    color: #000;\n    font-size: 12px;\n    font-weight: 500;\n}\n\n.tools-ai-status {\n    font-size: 11px;\n    color: #c33;\n    margin-left: auto;\n    white-space: nowrap;\n}\n\n/* \u66F4\u6539API \u5C55\u5F00\u7684\u586B\u5199\u8868\u5355 */\n.tools-ai-form {\n    display: none;\n    padding: 6px;\n    border-bottom: 1px solid #eee;\n    text-align: left;\n    box-sizing: border-box;\n    background: rgba(255, 255, 255, 0.85);\n}\n\n.tools-ai-form .row {\n    display: flex;\n    align-items: center;\n    margin-bottom: 4px;\n}\n\n.tools-ai-form .row > span {\n    width: 58px;\n    flex: none;\n    font-size: 12px;\n    color: #333;\n}\n\n.tools-ai-form .row input {\n    flex: 1;\n    min-width: 0;\n    height: 22px;\n    padding: 0 4px;\n    font-size: 12px;\n    color: #000;\n    background: #fff;\n    border: 1px solid #ddd;\n    border-radius: 3px;\n    outline: none;\n    box-sizing: border-box;\n}\n\n.tools-ai-form .row input:focus {\n    border-color: #409EFF;\n}\n\n.tools-ai-form .tools-ai-actions {\n    gap: 6px;\n    margin-bottom: 0;\n}\n\n.tools-ai-form .tools-ai-actions .cx-btn {\n    margin: 0 !important;\n}\n\n.tools-ai-hint {\n    font-size: 11px;\n    color: #999;\n}\n\n.tools-notice-content .log {\n    height: auto;\n    width: auto;\n    text-align: center;\n    border: 1px solid #eee;\n    overflow: hidden;\n}\n\n.tools-notice-content .log p {\n    margin: 0;\n    color: #aaa;\n    font-size: 11px;\n    font-weight: 500;\n    font-family: Arial, Helvetica, sans-serif;\n    line-height: 26px;\n}\n\n/* \u6EDA\u52A8\u69FD */\n::-webkit-scrollbar {\n    width: 10px;\n    height: 10px;\n}\n\n::-webkit-scrollbar-track {\n    border-radius: 3px;\n    background: rgba(0, 0, 0, 0.06);\n    -webkit-box-shadow: inset 0 0 5px rgba(0, 0, 0, 0.08);\n}\n\n/* \u6EDA\u52A8\u6761\u6ED1\u5757 */\n::-webkit-scrollbar-thumb {\n    border-radius: 3px;\n    background: rgba(0, 0, 0, 0.12);\n    -webkit-box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.2);\n}\n\n/* \u590D\u9009\u6846 */\n.switch {\n    margin: 2px auto;\n    display: inline-flex;\n    align-items: center;\n    width: auto;\n}\n.checkbox-input {\n    display: none\n}\n.checkbox {\n    -webkit-transition: background-color 0.3s;\n    transition: background-color 0.3s;\n    background-color: #fff;\n    border: 1px solid #d7d7d7;\n    border-radius: 50px;\n    width: 16px;\n    height: 16px;\n    vertical-align:middle;\n    margin: 0 5px;\n}\n.checkbox-input:checked+.checkbox {\n    background-color: #409EFF;\n}\n.checkbox-input:checked+.checkbox:after {\n    // content: \"\u221A\";\n    display: inline-block;\n    height: 100%;\n    width: 100%;\n    color: #fff;\n    text-align: center;\n    line-height: 16px;\n    font-size: 12px;\n    box-shadow: 0 0 4px #409EFF;\n}\n\n.tools-logger-panel:hover,\n.tools-logger-panel:focus-within {\n    background: rgba(256, 256, 256, 0.7);\n}\n\n.tools-logger-panel .head:active {\n    background-color: #E5E5E5;\n}\n\n.tools-logger-panel > .close {\n    margin: 2px;\n}\n\n";
+    var css = "\n@keyframes aniripple  \n{\n    0%{\n        width:0px;\n        height:0px;\n        opacity:0.4;\n    }\n    100%{\n        width:500px;\n        height:500px;\n        opacity:0;\n    }\n}  \n\n#cxtools {\n    position: absolute;\n    left: 250px;\n    top: 2px;\n    width: 210px;\n    font-size: 0;\n}\n\n.cx-btn {\n    outline: none;\n    border: 0;\n    background: #7d9d35;\n    color: #fff;\n    border-radius: 4px;\n    padding: 2px 8px;\n    cursor: pointer;\n    font-size: 12px;\n    margin-left: 4px;\n}\n\n.cx-btn:hover {\n    box-shadow: 1px 1px 1px 1px #ccc;\n}\n\n.zhs-tools-btn {\n    color: #fff;\n    background: #ff9d34;\n    padding: 4px;\n    display: inline-block;\n    height: 24px;\n    font-size: 14px;\n    line-height: 24px;\n    margin:0;\n    cursor:pointer;\n}\n.btn-ripple{\n    position:absolute;\n    background:#000;\n    pointer-events:none;\n    transform:translate(-50%,-50%);\n    border-radius:50%;\n    animation:aniripple 1s linear infinite;\n}\n\n.zhs-start-btn{\n    background: #36ac36;\n}\n\n.zhs-start-btn:hover{\n    background: #3b8d3b;\n}\n\n#zhs-ytbn {\n    color: #fff;\n    background: #e777ff;\n}\n\n#zhs-ytbn:hover {\n    background: #e7b7f1;\n}\n\n.zhs-search-answer {\n    border: 0;\n    outline: none;\n    padding: 4px;\n}\n\n.zhs-search-answer:hover {\n    opacity: .85;\n}\n\n.mooc163-search{\n    background-color: #60b900;\n    display: block;\n    margin: 0 auto;\n}\n\n.tools-logger-panel{\n    width: 360px;\n    height: auto;\n    max-height: 470px;\n    color:#000;\n    position: fixed;\n    margin: 0 auto;\n    display: block;\n    font-size: 14px;\n    border-radius: 4px;\n    width: 340px;\n    text-align: center;\n    overflow: hidden;\n    left:60px;\n    top: 40px;\n    z-index: 100000;\n    background: rgba(256, 256, 256, 0.3);\n    box-shadow: 0px 0px 5px #bbb;\n}\n\n.head {\n    width: 100%;\n    height: 30px;\n    padding: 4px;\n    box-sizing: border-box;\n    cursor: move;\n    transition-property: opacity, background-color;\n    transition: 200ms ease-in-out;\n}\n\n.head span{\n    color:#000;\n    float:left;\n    font-weight: 550;\n}\n\n.status {\n    color: #67C23A;\n    font-weight: 600;\n}\n\n.tools-notice-content {\n    width: 100%;\n    height: 200px;\n    border-top:0px;\n    overflow-y: scroll;\n    overflow-x: hidden;\n}\n\n/* \u5C0F\u5DE5\u5177\u901A\u77E5\u6761\u91CC\u7684\u6309\u94AE\u680F\uFF08\u5F00\u59CB\u6302\u673A/\u79D2\u8FC7\u89C6\u9891/\u4E0B\u8F7D\u8D44\u6E90/\u4E0B\u8F7D\u5B57\u5E55\uFF09 */\n.tools-btn-bar {\n    display: flex;\n    flex-wrap: wrap;\n    gap: 4px;\n    padding: 6px 4px;\n    border-top: 1px solid #eee;\n    border-bottom: 1px solid #eee;\n    box-sizing: border-box;\n}\n\n.tools-btn-bar:empty {\n    display: none;\n}\n\n.tools-btn-bar .cx-btn {\n    margin: 0 !important;\n}\n\n/* \u5C0F\u5DE5\u5177\u901A\u77E5\u6761\u91CC\u7684 AI \u7B54\u9898\u680F\uFF08\u66F4\u6539API \u6309\u94AE + \u81EA\u52A8\u7B54\u9898\u5F00\u5173 + \u72B6\u6001\uFF09 */\n.tools-ai-bar {\n    display: flex;\n    align-items: center;\n    gap: 8px;\n    padding: 4px 6px;\n    border-top: 1px solid #eee;\n    border-bottom: 1px solid #eee;\n    box-sizing: border-box;\n    background: rgba(255, 255, 255, 0.5);\n}\n\n.tools-ai-bar .tools-ai-btn {\n    margin: 0 !important;\n}\n\n.tools-ai-bar .switch {\n    margin: 0;\n    width: auto;\n}\n\n.tools-ai-bar .switch span {\n    color: #000;\n    font-size: 12px;\n    font-weight: 500;\n}\n\n.tools-ai-status {\n    font-size: 11px;\n    color: #c33;\n    margin-left: auto;\n    white-space: nowrap;\n}\n\n/* \u66F4\u6539API \u5C55\u5F00\u7684\u586B\u5199\u8868\u5355 */\n.tools-ai-form {\n    display: none;\n    padding: 6px;\n    border-bottom: 1px solid #eee;\n    text-align: left;\n    box-sizing: border-box;\n    background: rgba(255, 255, 255, 0.85);\n}\n\n.tools-ai-form .row {\n    display: flex;\n    align-items: center;\n    margin-bottom: 4px;\n}\n\n.tools-ai-form .row > span {\n    width: 58px;\n    flex: none;\n    font-size: 12px;\n    color: #333;\n}\n\n.tools-ai-form .row input {\n    flex: 1;\n    min-width: 0;\n    height: 22px;\n    padding: 0 4px;\n    font-size: 12px;\n    color: #000;\n    background: #fff;\n    border: 1px solid #ddd;\n    border-radius: 3px;\n    outline: none;\n    box-sizing: border-box;\n}\n\n.tools-ai-form .row input:focus {\n    border-color: #409EFF;\n}\n\n.tools-ai-form .row select {\n    flex: 1;\n    min-width: 0;\n    height: 22px;\n    padding: 0 2px;\n    font-size: 12px;\n    color: #000;\n    background: #fff;\n    border: 1px solid #ddd;\n    border-radius: 3px;\n    outline: none;\n    box-sizing: border-box;\n}\n\n.tools-ai-form .row select:focus {\n    border-color: #409EFF;\n}\n\n.tools-ai-form button:disabled {\n    opacity: 0.6;\n    cursor: default;\n}\n\n.tools-ai-form .tools-ai-actions {\n    gap: 6px;\n    margin-bottom: 0;\n}\n\n.tools-ai-form .tools-ai-actions .cx-btn {\n    margin: 0 !important;\n}\n\n.tools-ai-hint {\n    font-size: 11px;\n    color: #999;\n}\n\n.tools-notice-content .log {\n    height: auto;\n    width: auto;\n    text-align: center;\n    border: 1px solid #eee;\n    overflow: hidden;\n}\n\n.tools-notice-content .log p {\n    margin: 0;\n    color: #aaa;\n    font-size: 11px;\n    font-weight: 500;\n    font-family: Arial, Helvetica, sans-serif;\n    line-height: 26px;\n}\n\n/* \u6EDA\u52A8\u69FD */\n::-webkit-scrollbar {\n    width: 10px;\n    height: 10px;\n}\n\n::-webkit-scrollbar-track {\n    border-radius: 3px;\n    background: rgba(0, 0, 0, 0.06);\n    -webkit-box-shadow: inset 0 0 5px rgba(0, 0, 0, 0.08);\n}\n\n/* \u6EDA\u52A8\u6761\u6ED1\u5757 */\n::-webkit-scrollbar-thumb {\n    border-radius: 3px;\n    background: rgba(0, 0, 0, 0.12);\n    -webkit-box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.2);\n}\n\n/* \u590D\u9009\u6846 */\n.switch {\n    margin: 2px auto;\n    display: inline-flex;\n    align-items: center;\n    width: auto;\n}\n.checkbox-input {\n    display: none\n}\n.checkbox {\n    -webkit-transition: background-color 0.3s;\n    transition: background-color 0.3s;\n    background-color: #fff;\n    border: 1px solid #d7d7d7;\n    border-radius: 50px;\n    width: 16px;\n    height: 16px;\n    vertical-align:middle;\n    margin: 0 5px;\n}\n.checkbox-input:checked+.checkbox {\n    background-color: #409EFF;\n}\n.checkbox-input:checked+.checkbox:after {\n    // content: \"\u221A\";\n    display: inline-block;\n    height: 100%;\n    width: 100%;\n    color: #fff;\n    text-align: center;\n    line-height: 16px;\n    font-size: 12px;\n    box-shadow: 0 0 4px #409EFF;\n}\n\n.tools-logger-panel:hover,\n.tools-logger-panel:focus-within {\n    background: rgba(256, 256, 256, 0.7);\n}\n\n.tools-logger-panel .head:active {\n    background-color: #E5E5E5;\n}\n\n.tools-logger-panel > .close {\n    margin: 2px;\n}\n\n";
     var style = document.createElement("style");
     style.innerHTML = css;
     document.body.appendChild(style);

@@ -1,6 +1,7 @@
 import { Application } from "../application";
 import "../../views/common";
 import { Noifications } from "@App/internal/utils/utils";
+import { TestAIConnection } from "@App/internal/app/ai";
 
 export interface Logger {
     Debug(...args: any): Logger;
@@ -96,22 +97,31 @@ export class PageLog implements Logger {
                <span class="close" style="float:right; cursor:pointer; margin-right:5px;">x</span>
             </div>
             <div class="tools-ai-bar" id="tools-ai-bar">
-               <button class="cx-btn tools-ai-btn" id="tools-ai-btn" title="填写接口地址 / API Key / 模型名称">更改API</button>
+               <button class="cx-btn tools-ai-btn" id="tools-ai-btn" title="选服务商、粘贴 Key，接口和模型自动填好">更改API</button>
                <label class="switch">
                   <input class="checkbox-input" id="ai-auto-checkbox" type="checkbox">
                   <label class="checkbox" for="ai-auto-checkbox"></label>
                   <span>自动答题</span>
                </label>
-               <span class="tools-ai-status" id="ai-status"></span>
+               <span class="tools-ai-status" id="ai-status">未配置</span>
             </div>
             <div class="tools-ai-form" id="tools-ai-form">
-               <div class="row"><span>接口地址</span><input id="ai-base-input" type="text" spellcheck="false" placeholder="https://api.deepseek.com/v1"></div>
-               <div class="row"><span>API Key</span><input id="ai-key-input" type="password" spellcheck="false" placeholder="sk-..."></div>
-               <div class="row"><span>模型名</span><input id="ai-model-input" type="text" spellcheck="false" placeholder="deepseek-chat"></div>
+               <div class="row"><span>服务商</span>
+                  <select id="ai-provider-select">
+                     <option value="zhipu">智谱 GLM（glm-4-flash，免费）</option>
+                     <option value="siliconflow">硅基流动</option>
+                     <option value="deepseek">DeepSeek</option>
+                     <option value="custom">自定义（自己填地址和模型）</option>
+                  </select>
+               </div>
+               <div class="row"><span>API Key</span><input id="ai-key-input" type="password" spellcheck="false" placeholder="粘贴你申请到的 key"></div>
+               <div class="row"><span>接口地址</span><input id="ai-base-input" type="text" spellcheck="false"></div>
+               <div class="row"><span>模型名</span><input id="ai-model-input" type="text" spellcheck="false"></div>
                <div class="row tools-ai-actions">
+                  <button class="cx-btn" id="ai-test-btn">测试连接</button>
                   <button class="cx-btn" id="ai-save-btn">保存</button>
                   <button class="cx-btn" id="ai-cancel-btn">取消</button>
-                  <span class="tools-ai-hint">不会填？看 docs/AI-GUIDE.md</span>
+                  <span class="tools-ai-hint" id="ai-test-result"></span>
                </div>
             </div>
             <div class="tools-btn-bar" id="tools-btn-bar"></div>
@@ -189,59 +199,144 @@ export class PageLog implements Logger {
                     // ignore
                 }
             };
+            let AI_PRESETS: any = {
+                zhipu: {base: "https://open.bigmodel.cn/api/paas/v4", model: "glm-4-flash"},
+                siliconflow: {base: "https://api.siliconflow.cn/v1", model: "Qwen/Qwen2.5-7B-Instruct"},
+                deepseek: {base: "https://api.deepseek.com/v1", model: "deepseek-chat"},
+                custom: {base: "", model: ""},
+            };
             let aiBtn = <HTMLElement>this.div.querySelector("#tools-ai-btn");
             let aiForm = <HTMLElement>this.div.querySelector("#tools-ai-form");
+            let aiProvider = <HTMLSelectElement>this.div.querySelector("#ai-provider-select");
             let aiBaseInput = <HTMLInputElement>this.div.querySelector("#ai-base-input");
             let aiKeyInput = <HTMLInputElement>this.div.querySelector("#ai-key-input");
             let aiModelInput = <HTMLInputElement>this.div.querySelector("#ai-model-input");
             let aiAuto = <HTMLInputElement>this.div.querySelector("#ai-auto-checkbox");
             let aiStatus = <HTMLElement>this.div.querySelector("#ai-status");
+            let aiTestBtn = <HTMLButtonElement>this.div.querySelector("#ai-test-btn");
+            let aiTestResult = <HTMLElement>this.div.querySelector("#ai-test-result");
+
+            let setAIStatus = (text: string, color: string, title?: string) => {
+                aiStatus.innerText = text;
+                aiStatus.style.color = color;
+                aiStatus.title = title || "";
+            };
+
+            // 选服务商 -> 自动填好接口地址和模型（只有「自定义」才允许手改）
+            let applyAIProvider = (id: string) => {
+                let preset = AI_PRESETS[id];
+                if (id != "custom" && preset) {
+                    aiBaseInput.value = preset.base;
+                    aiModelInput.value = preset.model;
+                }
+                let readonly = id != "custom";
+                aiBaseInput.readOnly = readonly;
+                aiModelInput.readOnly = readonly;
+                aiBaseInput.style.background = readonly ? "#f3f3f3" : "#fff";
+                aiModelInput.style.background = readonly ? "#f3f3f3" : "#fff";
+            };
 
             let fillAIApiForm = () => {
-                aiBaseInput.value = readConf("ai_base", "https://api.siliconflow.cn/v1");
+                let base = readConf("ai_base", AI_PRESETS.zhipu.base);
                 aiKeyInput.value = readConf("ai_key", "");
-                aiModelInput.value = readConf("ai_model", "Qwen/Qwen2.5-7B-Instruct");
+                aiBaseInput.value = base;
+                aiModelInput.value = readConf("ai_model", AI_PRESETS.zhipu.model);
+                let matched = "custom";
+                for (let k in AI_PRESETS) {
+                    if (AI_PRESETS[k].base && AI_PRESETS[k].base == base) {
+                        matched = k;
+                        break;
+                    }
+                }
+                aiProvider.value = matched;
+                applyAIProvider(matched);
             };
-            let refreshAIStatus = () => {
-                let on = readConf("ai_enable", "true") != "false";
-                let key = readConf("ai_key", "");
-                aiAuto.checked = on;
-                if (!on) {
-                    aiStatus.innerText = "自动答题：关";
-                    aiStatus.style.color = "#c33";
-                } else if (!key) {
-                    aiStatus.innerText = "未填 Key";
-                    aiStatus.style.color = "#c33";
+
+            let formConf = () => {
+                let base = aiBaseInput.value.trim().replace(/\/+$/, "");
+                if (base && base.indexOf("http") != 0) {
+                    base = "https://" + base;
+                }
+                return {base: base, key: aiKeyInput.value.trim(), model: aiModelInput.value.trim() || AI_PRESETS.zhipu.model};
+            };
+
+            // 测试连接：fromForm=true 用表单里的值测（不必先保存）
+            let runAITest = async (fromForm: boolean) => {
+                let conf = fromForm ? formConf() : {
+                    base: readConf("ai_base", AI_PRESETS.zhipu.base).replace(/\/+$/, ""),
+                    key: readConf("ai_key", ""),
+                    model: readConf("ai_model", AI_PRESETS.zhipu.model),
+                };
+                if (!conf.key) {
+                    setAIStatus("● 未配置 Key", "#c33");
+                    if (fromForm) {
+                        aiTestResult.innerText = "先填 API Key";
+                        aiTestResult.style.color = "#c33";
+                    }
+                    return;
+                }
+                setAIStatus("● 检测中…", "#888");
+                aiTestBtn.disabled = true;
+                if (fromForm) {
+                    aiTestResult.innerText = "检测中…";
+                    aiTestResult.style.color = "#888";
+                }
+                let ret = await TestAIConnection(conf);
+                aiTestBtn.disabled = false;
+                if (ret.ok) {
+                    setAIStatus("● 已连接", "#3a9", conf.model + " · " + ret.ms + "ms");
+                    if (fromForm) {
+                        aiTestResult.innerText = "连接成功 " + ret.ms + "ms";
+                        aiTestResult.style.color = "#3a9";
+                    }
+                    this.Info("AI 连接正常（" + conf.model + "，" + ret.ms + "ms）");
                 } else {
-                    aiStatus.innerText = "已配置";
-                    aiStatus.style.color = "#3a9";
+                    setAIStatus("● 连接失败", "#c33", ret.error);
+                    if (fromForm) {
+                        aiTestResult.innerText = ret.error || "连接失败";
+                        aiTestResult.style.color = "#c33";
+                    }
+                    this.Warn("AI 连接失败：" + (ret.error || "未知错误"));
                 }
             };
+
+            let refreshAIStatus = () => {
+                aiAuto.checked = readConf("ai_enable", "true") != "false";
+                if (!aiAuto.checked) {
+                    setAIStatus("● 自动答题：关", "#c33");
+                    return;
+                }
+                runAITest(false);
+            };
+
             fillAIApiForm();
             refreshAIStatus();
 
+            aiProvider.onchange = () => {
+                applyAIProvider(aiProvider.value);
+                aiTestResult.innerText = "";
+            };
             aiBtn.onclick = () => {
                 if (aiForm.style.display == "block") {
                     aiForm.style.display = "none";
                     return;
                 }
                 fillAIApiForm();
+                aiTestResult.innerText = "";
                 aiForm.style.display = "block";
             };
+            aiTestBtn.onclick = () => {
+                runAITest(true);
+            };
             (<HTMLElement>this.div.querySelector("#ai-save-btn")).onclick = () => {
-                let base = aiBaseInput.value.trim().replace(/\/+$/, "");
-                let key = aiKeyInput.value.trim();
-                let model = aiModelInput.value.trim();
-                if (base && base.indexOf("http") != 0) {
-                    base = "https://" + base;
-                }
-                writeConf("ai_base", base || "https://api.siliconflow.cn/v1");
-                writeConf("ai_key", key);
-                writeConf("ai_model", model || "Qwen/Qwen2.5-7B-Instruct");
+                let conf = formConf();
+                writeConf("ai_base", conf.base || AI_PRESETS.zhipu.base);
+                writeConf("ai_key", conf.key);
+                writeConf("ai_model", conf.model);
                 aiForm.style.display = "none";
-                refreshAIStatus();
-                this.Info("AI 配置已保存：" + (base || "默认接口") + " / " +
-                    (model || "默认模型") + (key ? "" : "（Key 为空，自动答题不会生效）"));
+                this.Info("AI 配置已保存：" + (conf.base || "默认接口") + " / " + conf.model +
+                    (conf.key ? "" : "（Key 为空，自动答题不会生效）"));
+                runAITest(false);
             };
             (<HTMLElement>this.div.querySelector("#ai-cancel-btn")).onclick = () => {
                 aiForm.style.display = "none";
@@ -249,8 +344,8 @@ export class PageLog implements Logger {
             };
             aiAuto.addEventListener("change", () => {
                 writeConf("ai_enable", aiAuto.checked ? "true" : "false");
-                refreshAIStatus();
                 this.Info(aiAuto.checked ? "自动答题已开启（用 AI 作答）" : "自动答题已关闭（改走原题库逻辑）");
+                refreshAIStatus();
             });
 
             setTimeout(() => {

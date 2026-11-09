@@ -166,8 +166,7 @@ export function ParseAIAnswer(raw: string, type: TopicType, options: Option[]): 
     return letters.map(l => ({option: l, content: ""}));
 }
 
-export function AskAI(topic: string, type: TopicType, options: Option[]): Promise<AIResult> {
-    return new Promise<AIResult>(resolve => {
+export function AskAI(topic: string, type: TopicType, options: Option[]): Promise<AIResult> {    return new Promise<AIResult>(resolve => {
         const conf = AIConfig();
         if (!conf.key) {
             return resolve({ok: false, correct: null, error: "未配置 ai_key"});
@@ -217,5 +216,85 @@ export function AskAI(topic: string, type: TopicType, options: Option[]): Promis
                 return resolve({ok: false, correct: null, error: "网络请求失败（检查 ai_base / 网络 / 代理）"});
             },
         });
+    });
+}
+
+// 测试 AI 接口是否连得上：发一个极小的请求，返回耗时和失败原因
+// 面板里的「测试连接」和页面加载时的自动检测都用它
+export interface AITestResult {
+    ok: boolean;
+    ms: number;
+    status?: number;
+    error?: string;
+}
+
+export function TestAIConnection(conf?: { base: string, key: string, model: string }): Promise<AITestResult> {
+    return new Promise<AITestResult>(resolve => {
+        conf = conf || AIConfig();
+        const base = (conf.base || "").replace(/\/+$/, "");
+        const t0 = Date.now();
+        const finish = (r: AITestResult) => {
+            r.ms = Date.now() - t0;
+            resolve(r);
+        };
+        if (!conf.key) {
+            return finish({ok: false, ms: 0, error: "还没填 API Key"});
+        }
+        if (!base) {
+            return finish({ok: false, ms: 0, error: "还没填接口地址"});
+        }
+        const url = base + "/chat/completions";
+        const payload = JSON.stringify({
+            model: conf.model,
+            max_tokens: 4,
+            temperature: 0,
+            messages: [{role: "user", content: "ping"}],
+        });
+        const handle = (status: number, text: string) => {
+            if (status >= 200 && status < 300) {
+                return finish({ok: true, ms: 0, status: status});
+            }
+            if (status == 401 || status == 403) {
+                return finish({ok: false, ms: 0, status: status, error: "Key 不对或没有权限(HTTP " + status + ")"});
+            }
+            if (status == 404) {
+                return finish({ok: false, ms: 0, status: status, error: "接口地址不对(HTTP 404)，检查接口地址"});
+            }
+            if (status == 429) {
+                return finish({ok: false, ms: 0, status: status, error: "请求太频繁或额度用完了(HTTP 429)"});
+            }
+            if (status == 0) {
+                return finish({ok: false, ms: 0, status: status, error: "网络错误：连不上接口"});
+            }
+            return finish({ok: false, ms: 0, status: status, error: "HTTP " + status + "：" + (text || "").slice(0, 80)});
+        };
+        try {
+            let gx = (<any>window).GM_xmlhttpRequest;
+            if (typeof gx == "function") {
+                gx({
+                    method: "POST",
+                    url: url,
+                    headers: {"Content-Type": "application/json", "Authorization": "Bearer " + conf.key},
+                    data: payload,
+                    timeout: 15000,
+                    onload: (resp: any) => handle(resp.status, resp.responseText),
+                    onerror: () => finish({ok: false, ms: 0, error: "网络错误：连不上接口"}),
+                    ontimeout: () => finish({ok: false, ms: 0, error: "请求超时（15 秒）"}),
+                });
+                return;
+            }
+            fetch(url, {
+                method: "POST",
+                headers: {"Content-Type": "application/json", "Authorization": "Bearer " + conf.key},
+                body: payload,
+            }).then(async r => {
+                const text = await r.text();
+                handle(r.status, text);
+            }).catch(() => {
+                finish({ok: false, ms: 0, error: "网络错误：连不上接口"});
+            });
+        } catch (e) {
+            finish({ok: false, ms: 0, error: String(e)});
+        }
     });
 }

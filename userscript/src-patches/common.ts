@@ -234,6 +234,29 @@ window.addEventListener("load", () => {
     border-color: #409EFF;
 }
 
+.tools-ai-form .row select {
+    flex: 1;
+    min-width: 0;
+    height: 22px;
+    padding: 0 2px;
+    font-size: 12px;
+    color: #000;
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+    outline: none;
+    box-sizing: border-box;
+}
+
+.tools-ai-form .row select:focus {
+    border-color: #409EFF;
+}
+
+.tools-ai-form button:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+
 .tools-ai-form .tools-ai-actions {
     gap: 6px;
     margin-bottom: 0;

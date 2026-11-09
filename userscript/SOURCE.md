@@ -180,9 +180,9 @@ if (btnBar) {
 ```
 
 
-## 6. 通知条里加 AI 设置：`更改API` 按钮 + `自动答题` 开关
+## 6. 通知条里加 AI 设置：服务商自动配置 + 连接检测 + `自动答题` 开关
 
-目标：不用改脚本源码、不用重装，直接在页面右上角的「小工具通知条」里配 AI。
+目标：不用改脚本源码、不用重装，直接在页面右上角的「小工具通知条」里配好 AI，并且能立刻知道「连不连得上」。
 
 **`src/internal/utils/log.ts`** —— 面板结构里插两行（AI 栏 + 展开的填写表单），放在标题栏和任务按钮栏之间：
 
@@ -194,35 +194,72 @@ if (btnBar) {
       <label class="checkbox" for="ai-auto-checkbox"></label>
       <span>自动答题</span>
    </label>
-   <span class="tools-ai-status" id="ai-status"></span>
+   <span class="tools-ai-status" id="ai-status">未配置</span>
 </div>
 <div class="tools-ai-form" id="tools-ai-form">
-   <div class="row"><span>接口地址</span><input id="ai-base-input" type="text" placeholder="https://api.deepseek.com/v1"></div>
-   <div class="row"><span>API Key</span><input id="ai-key-input" type="password" placeholder="sk-..."></div>
-   <div class="row"><span>模型名</span><input id="ai-model-input" type="text" placeholder="deepseek-chat"></div>
+   <div class="row"><span>服务商</span>
+      <select id="ai-provider-select">
+         <option value="zhipu">智谱 GLM（glm-4-flash，免费）</option>
+         <option value="siliconflow">硅基流动</option>
+         <option value="deepseek">DeepSeek</option>
+         <option value="custom">自定义（自己填地址和模型）</option>
+      </select>
+   </div>
+   <div class="row"><span>API Key</span><input id="ai-key-input" type="password" placeholder="粘贴你申请到的 key"></div>
+   <div class="row"><span>接口地址</span><input id="ai-base-input" type="text"></div>
+   <div class="row"><span>模型名</span><input id="ai-model-input" type="text"></div>
    <div class="row tools-ai-actions">
+      <button class="cx-btn" id="ai-test-btn">测试连接</button>
       <button class="cx-btn" id="ai-save-btn">保存</button>
       <button class="cx-btn" id="ai-cancel-btn">取消</button>
-      <span class="tools-ai-hint">不会填？看 docs/AI-GUIDE.md</span>
+      <span class="tools-ai-hint" id="ai-test-result"></span>
    </div>
 </div>
 ```
 
-行为：
+**自动配置**：内置服务商预设，选服务商就自动填好接口地址和模型，用户只需要粘 Key。
 
-- 点「更改API」展开/收起表单，三个输入框自动带出当前值（`ai_base` / `ai_key` / `ai_model`）。
-- 点「保存」写配置：
-  ```ts
-  writeConf("ai_base", base);
-  writeConf("ai_key", key);
-  writeConf("ai_model", model);
-  ```
-  `writeConf` 内部做两件事：`Application.App.config.SetConfig(key, val)`（当前页面立即生效）+ `localStorage.setItem("cx_ai_custom", …)`（刷新后由脚本头部恢复）。
-- 「自动答题」开关写 `ai_enable`（`"true"` / `"false"`）。关掉后 `AIEnabled()` 返回 false，答题回落到原题库逻辑。
-- 状态文字（`#ai-status`）实时显示：`已配置` / `未填 Key` / `自动答题：关`。
-- 面板关闭（点 x）时，`#tools-ai-bar` 会连同任务按钮一起被搬进右上角的悬浮小条，不丢失。
+```ts
+let AI_PRESETS: any = {
+    zhipu:       {base: "https://open.bigmodel.cn/api/paas/v4", model: "glm-4-flash"},
+    siliconflow: {base: "https://api.siliconflow.cn/v1", model: "Qwen/Qwen2.5-7B-Instruct"},
+    deepseek:    {base: "https://api.deepseek.com/v1", model: "deepseek-chat"},
+    custom:      {base: "", model: ""},
+};
+```
 
-**`src/views/common.ts`** —— 补 `.tools-ai-bar` / `.tools-ai-form` / 输入框 / `.tools-ai-status` 的样式，并把面板 `max-height` 从 260px 提到 470px（多了一行 AI 栏 + 可展开的表单），日志区高度改为 200px。
+- 选非「自定义」时，接口地址 / 模型名输入框自动填值并置为只读（灰底），避免改坏。
+- 打开表单时按已保存的 `ai_base` 反查属于哪个预设，自动选中对应服务商。
+- 「自定义」才允许手改地址和模型（第三方中转、自建反代、Ollama 等用这个）。
+
+**连接检测**：`src/internal/app/ai.ts` 新增 `TestAIConnection(conf?)`，发一个 `max_tokens: 4` 的极小请求，返回 `{ok, ms, status?, error?}`；有 `GM_xmlhttpRequest` 就用它（能拿到 HTTP 状态码），否则退回 `fetch`。
+
+```ts
+if (status == 401 || status == 403) error = "Key 不对或没有权限(HTTP 401)";
+else if (status == 404) error = "接口地址不对(HTTP 404)，检查接口地址";
+else if (status == 429) error = "请求太频繁或额度用完了(HTTP 429)";
+else if (status == 0)   error = "网络错误：连不上接口";
+```
+
+- 页面加载时：有 Key 就自动测一次，面板右侧显示 `● 检测中…` → `● 已连接`（绿）/ `● 连接失败`（红，鼠标悬停看原因）/ `● 未配置 Key`。
+- 「测试连接」按钮用**表单里当前填的**值测，不需要先保存。
+- 保存配置后自动再测一次。
+
+**保存与持久化**：
+
+```ts
+writeConf("ai_base", conf.base);
+writeConf("ai_key", conf.key);
+writeConf("ai_model", conf.model);
+```
+
+`writeConf` 内部做两件事：`Application.App.config.SetConfig(key, val)`（当前页面立即生效）+ `localStorage.setItem("cx_ai_custom", …)`（刷新后由脚本头部恢复）。
+
+**`自动答题` 开关**：写 `ai_enable`（`"true"` / `"false"`），关掉后 `AIEnabled()` 返回 false，答题回落到原题库逻辑。
+
+**面板关闭**（点 x）时，`#tools-ai-bar` 会连同任务按钮一起被搬进右上角的悬浮小条，不丢失。
+
+**`src/views/common.ts`** —— 补 `.tools-ai-bar` / `.tools-ai-form` / `input` / `select` / `.tools-ai-status` 的样式，并把面板 `max-height` 从 260px 提到 470px（多了一行 AI 栏 + 可展开的表单），日志区高度改为 200px。
 
 **脚本头部** —— 让面板里填的值在刷新后不被默认值覆盖，见 [`src-patches/cxmooc-js-diff.md`](src-patches/cxmooc-js-diff.md)：先把默认 `config` 写进 `localStorage`，再用 `cx_ai_custom` 里保存过的值覆盖回来。
 
