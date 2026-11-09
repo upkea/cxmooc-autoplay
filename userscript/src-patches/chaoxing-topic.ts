@@ -222,7 +222,8 @@ export class CxCourseTopic extends Topic {
 
     // 找确认弹窗里的「确定/确认」（不能匹配到主「提交」按钮，否则会重复点）
     private findConfirmBtn(doc: any): HTMLElement {
-        let want = /^(确定|确认|确认提交|是|提交)$/;
+        // 注意：这里不能包含「提交」，否则没有弹窗时会把主提交按钮又点一次
+        let want = /^(确定|确认|确认提交|是|继续提交)$/;
         let last: HTMLElement = null;
         try {
             let nodes = doc.querySelectorAll("button,a,span,div");
