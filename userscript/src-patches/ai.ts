@@ -139,6 +139,71 @@ export interface VisionResult {
     model?: string;
 }
 
+// ===== 题图预览小窗：把发给视觉模型的截图浮在页面右上角，方便用户核对 =====
+let previewState: { box: HTMLElement, img: HTMLImageElement, cap: HTMLElement, head: HTMLElement } = null;
+let previewDrag: { dx: number, dy: number } = null;
+
+export function ShowVisionPreview(dataUrl: string, text: string): void {
+    try {
+        if (!dataUrl || !document || !document.body) {
+            return;
+        }
+        if (!previewState || !previewState.box.isConnected) {
+            let box = document.createElement("div");
+            box.style.cssText =
+                "position:fixed;right:14px;top:70px;z-index:2147483647;width:280px;" +
+                "background:#ffffff;border:1px solid #d0d7de;border-radius:8px;" +
+                "box-shadow:0 6px 18px rgba(0,0,0,.28);padding:6px;cursor:move;" +
+                "font:12px/1.5 'Microsoft YaHei',sans-serif;color:#333;";
+            let head = document.createElement("div");
+            head.style.cssText = "display:flex;justify-content:space-between;align-items:center;color:#57606a;font-weight:bold;margin-bottom:4px;";
+            let title = document.createElement("span");
+            title.textContent = "AI 看到的题目";
+            let closer = document.createElement("span");
+            closer.textContent = "\u00d7";
+            closer.style.cssText = "cursor:pointer;padding:0 6px;font-size:14px;color:#888;";
+            closer.onclick = () => {
+                try { box.remove(); } catch (e) { /* ignore */ }
+                previewState = null;
+            };
+            head.appendChild(title);
+            head.appendChild(closer);
+            let img = document.createElement("img");
+            img.style.cssText = "display:block;width:100%;border-radius:4px;border:1px solid #eee;";
+            let cap = document.createElement("div");
+            cap.style.cssText = "margin-top:4px;color:#0550ae;word-break:break-all;";
+            box.appendChild(head);
+            box.appendChild(img);
+            box.appendChild(cap);
+            document.body.appendChild(box);
+            previewState = { box: box, img: img, cap: cap, head: head };
+            // 拖动
+            head.onmousedown = (ev: MouseEvent) => {
+                ev.preventDefault();
+                previewDrag = { dx: ev.clientX - box.offsetLeft, dy: ev.clientY - box.offsetTop };
+                let move = (e: MouseEvent) => {
+                    if (previewDrag) {
+                        box.style.left = Math.max(0, e.clientX - previewDrag.dx) + "px";
+                        box.style.top = Math.max(0, e.clientY - previewDrag.dy) + "px";
+                        box.style.right = "auto";
+                    }
+                };
+                let up = () => {
+                    previewDrag = null;
+                    window.removeEventListener("mousemove", move);
+                    window.removeEventListener("mouseup", up);
+                };
+                window.addEventListener("mousemove", move);
+                window.addEventListener("mouseup", up);
+            };
+        }
+        previewState.img.src = dataUrl;
+        previewState.cap.textContent = text || "读题中…";
+    } catch (e) {
+        // ignore
+    }
+}
+
 // 用视觉模型读题：图片 + 提示词 → 回答文本
 // 依次尝试配置的模型 → glm-4.1v-thinking-flash（免费思考型，推理强）→ glm-4v-flash
 export function AskAIVision(imageDataUrl: string, prompt: string): Promise<VisionResult> {

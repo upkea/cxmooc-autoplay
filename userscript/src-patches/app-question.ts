@@ -1,7 +1,7 @@
 import {HttpUtils, removeHTML, randNumber, Sleep} from "../utils/utils";
 import {SystemConfig} from "@App/config";
 import {Application} from "../application";
-import {AIEnabled, AskAI, AIResult, VisionEnabled, VisionConfig, CaptureQuestionImage, AskAIVision} from "./ai";
+import {AIEnabled, AskAI, AIResult, VisionEnabled, VisionConfig, CaptureQuestionImage, AskAIVision, ShowVisionPreview} from "./ai";
 
 export interface Topic {
     topic: string
@@ -509,6 +509,7 @@ export class ToolsQuestionBankFacade implements QuestionBankFacade {
                         if (el) {
                             let img = await CaptureQuestionImage(el);
                             if (img) {
+                                ShowVisionPreview(img, "读题中…");
                                 let typeName = type == 1 ? "单选题" : (type == 2 ? "多选题" : (type == 3 ? "判断题" : "填空题"));
                                 // 从选项列表推出可用字母（防止模型输出不存在的选项）
                                 let validLetters: string[] = [];
@@ -626,6 +627,7 @@ export class ToolsQuestionBankFacade implements QuestionBankFacade {
                                 }
                                 if (letters.length > 0) {
                                     Application.App.log.Info("视觉读题答案：" + letters.join("") + "（模型 " + usedModel + "，投票 " + (bestLog || letters.join("")) + "）");
+                                    ShowVisionPreview(img, "AI 答案：" + letters.join("") + "（" + usedModel + "·" + (bestLog || letters.join("")) + "）");
                                     if (type == 3) {
                                         // 判断题：A=对(true) B=错(false)，后续统一转换逻辑会映射到题目自己的选项值
                                         ret = {ok: true, correct: [{option: <any>(letters[0] == "A"), content: ""}], raw: "vision:" + letters.join(""), vision: true};

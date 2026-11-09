@@ -398,7 +398,7 @@ var __generator = (this && this.__generator) || function (thisArg, body) {
     }
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.TestAIConnection = exports.AskAI = exports.ParseAIAnswer = exports.BuildAIPrompt = exports.AskAIVision = exports.CaptureQuestionImage = exports.VisionConfig = exports.VisionEnabled = exports.AIEnabled = exports.AIConfig = void 0;
+exports.TestAIConnection = exports.AskAI = exports.ParseAIAnswer = exports.BuildAIPrompt = exports.AskAIVision = exports.ShowVisionPreview = exports.CaptureQuestionImage = exports.VisionConfig = exports.VisionEnabled = exports.AIEnabled = exports.AIConfig = void 0;
 var application_1 = __webpack_require__(/*! ../application */ "./src/internal/application.ts");
 var utils_1 = __webpack_require__(/*! ../utils/utils */ "./src/internal/utils/utils.ts");
 function cfg(key, def) {
@@ -525,6 +525,74 @@ function CaptureQuestionImage(el) {
     });
 }
 exports.CaptureQuestionImage = CaptureQuestionImage;
+// ===== 题图预览小窗：把发给视觉模型的截图浮在页面右上角，方便用户核对 =====
+var previewState = null;
+var previewDrag = null;
+function ShowVisionPreview(dataUrl, text) {
+    try {
+        if (!dataUrl || !document || !document.body) {
+            return;
+        }
+        if (!previewState || !previewState.box.isConnected) {
+            var box_1 = document.createElement("div");
+            box_1.style.cssText =
+                "position:fixed;right:14px;top:70px;z-index:2147483647;width:280px;" +
+                    "background:#ffffff;border:1px solid #d0d7de;border-radius:8px;" +
+                    "box-shadow:0 6px 18px rgba(0,0,0,.28);padding:6px;cursor:move;" +
+                    "font:12px/1.5 'Microsoft YaHei',sans-serif;color:#333;";
+            var head = document.createElement("div");
+            head.style.cssText = "display:flex;justify-content:space-between;align-items:center;color:#57606a;font-weight:bold;margin-bottom:4px;";
+            var title = document.createElement("span");
+            title.textContent = "AI 看到的题目";
+            var closer = document.createElement("span");
+            closer.textContent = "\u00d7";
+            closer.style.cssText = "cursor:pointer;padding:0 6px;font-size:14px;color:#888;";
+            closer.onclick = function () {
+                try {
+                    box_1.remove();
+                }
+                catch (e) { /* ignore */ }
+                previewState = null;
+            };
+            head.appendChild(title);
+            head.appendChild(closer);
+            var img = document.createElement("img");
+            img.style.cssText = "display:block;width:100%;border-radius:4px;border:1px solid #eee;";
+            var cap = document.createElement("div");
+            cap.style.cssText = "margin-top:4px;color:#0550ae;word-break:break-all;";
+            box_1.appendChild(head);
+            box_1.appendChild(img);
+            box_1.appendChild(cap);
+            document.body.appendChild(box_1);
+            previewState = { box: box_1, img: img, cap: cap, head: head };
+            // 拖动
+            head.onmousedown = function (ev) {
+                ev.preventDefault();
+                previewDrag = { dx: ev.clientX - box_1.offsetLeft, dy: ev.clientY - box_1.offsetTop };
+                var move = function (e) {
+                    if (previewDrag) {
+                        box_1.style.left = Math.max(0, e.clientX - previewDrag.dx) + "px";
+                        box_1.style.top = Math.max(0, e.clientY - previewDrag.dy) + "px";
+                        box_1.style.right = "auto";
+                    }
+                };
+                var up = function () {
+                    previewDrag = null;
+                    window.removeEventListener("mousemove", move);
+                    window.removeEventListener("mouseup", up);
+                };
+                window.addEventListener("mousemove", move);
+                window.addEventListener("mouseup", up);
+            };
+        }
+        previewState.img.src = dataUrl;
+        previewState.cap.textContent = text || "读题中…";
+    }
+    catch (e) {
+        // ignore
+    }
+}
+exports.ShowVisionPreview = ShowVisionPreview;
 // 用视觉模型读题：图片 + 提示词 → 回答文本
 // 依次尝试配置的模型 → glm-4.1v-thinking-flash（免费思考型，推理强）→ glm-4v-flash
 function AskAIVision(imageDataUrl, prompt) {
@@ -1444,6 +1512,7 @@ var ToolsQuestionBankFacade = /** @class */ (function () {
                                     case 3:
                                         img = _a.sent();
                                         if (!img) return [3 /*break*/, 10];
+                                        ai_1.ShowVisionPreview(img, "读题中…");
                                         typeName = type_1 == 1 ? "单选题" : (type_1 == 2 ? "多选题" : (type_1 == 3 ? "判断题" : "填空题"));
                                         validLetters_1 = [];
                                         for (oi = 0; oi < options.length; oi++) {
@@ -1568,6 +1637,7 @@ var ToolsQuestionBankFacade = /** @class */ (function () {
                                     case 9:
                                         if (letters.length > 0) {
                                             application_1.Application.App.log.Info("视觉读题答案：" + letters.join("") + "（模型 " + usedModel + "，投票 " + (bestLog || letters.join("")) + "）");
+                                            ai_1.ShowVisionPreview(img, "AI 答案：" + letters.join("") + "（" + usedModel + "·" + (bestLog || letters.join("")) + "）");
                                             if (type_1 == 3) {
                                                 // 判断题：A=对(true) B=错(false)，后续统一转换逻辑会映射到题目自己的选项值
                                                 ret = { ok: true, correct: [{ option: (letters[0] == "A"), content: "" }], raw: "vision:" + letters.join(""), vision: true };
