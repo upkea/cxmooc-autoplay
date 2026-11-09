@@ -147,10 +147,11 @@ export function VisionOCR(imageDataUrl: string): Promise<{ ok: boolean; text?: s
     );
 }
 
-// 文本推理：拿到干净题目文字后，用强文本模型解题并投票
+// 文本推理：拿到干净题目文字后，用强文本模型解题并投票（支持联网搜索）
 export function ReasonFromText(questionText: string, typeName: string, validLetters: string[], votes: number): Promise<ReasonResult> {
     const conf = AIConfig();
     const reasonModel = cfg("ai_reason_model", "glm-4-plus");
+    const webSearchEnabled = cfg("ai_web_search", "true") != "false";
     const models: string[] = [];
     const pushModel = (m: string) => {
         if (m && models.indexOf(m) < 0) {
@@ -165,7 +166,9 @@ export function ReasonFromText(questionText: string, typeName: string, validLett
     const prompt =
         "下面是一道中文" + typeName + "的题目（文字由图片转写而来，可能有极个别错字，请按上下文理解）：\n\n" +
         String(questionText || "").slice(0, 3000) + "\n\n" +
-        "请先在内心分析每个选项，判断正确答案。最后单独一行输出：答案：X" +
+        "请先在内心分析每个选项，判断正确答案。" +
+        (webSearchEnabled ? "题目属于网课测验，网上通常有原题和答案，可以联网搜索核对（搜索原题干关键句）。" : "") +
+        "最后单独一行输出：答案：X" +
         (validLetters.length <= 2 ? "（只输出一个字母）" : "（多选输出多个字母，如 答案：ABD；单选只输出一个字母）") +
         "。答案字母只能是 " + lettersHint + " 之一。除了最后一行，不要输出其他内容。";
     return new Promise<ReasonResult>((resolve) => {
@@ -193,14 +196,31 @@ export function ReasonFromText(questionText: string, typeName: string, validLett
             }
             return out;
         };
-        const ask = (model: string): Promise<{ ok: boolean; text?: string; error?: string }> => {
-            const body = JSON.stringify({
+        const ask = (model: string, useWeb: boolean): Promise<{ ok: boolean; text?: string; error?: string }> => {
+            const payload: any = {
                 model: model,
                 temperature: votes > 1 ? 0.8 : 0,
-                max_tokens: 400,
+                max_tokens: 700,
                 messages: [{ role: "user", content: prompt }],
-            });
+            };
+            if (useWeb) {
+                payload.tools = [{ type: "web_search", web_search: { enable: true, search_result: true } }];
+            }
+            const body = JSON.stringify(payload);
             return new Promise((res) => {
+                const handle = (text: string, status: number) => {
+                    try {
+                        const j = JSON.parse(text);
+                        if (j && j.error) {
+                            res({ ok: false, error: "接口错误 " + (j.error.code || "") + " " + String(j.error.message || "").slice(0, 60) });
+                            return;
+                        }
+                        const c = (j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || "";
+                        res(c ? { ok: true, text: String(c) } : { ok: false, error: "空回复 HTTP " + status });
+                    } catch (e) {
+                        res({ ok: false, error: "解析失败 HTTP " + status });
+                    }
+                };
                 try {
                     let gx = (<any>window).GM_xmlhttpRequest;
                     if (typeof gx == "function") {
@@ -209,20 +229,8 @@ export function ReasonFromText(questionText: string, typeName: string, validLett
                             url: conf.base + "/chat/completions",
                             headers: {"Content-Type": "application/json", "Authorization": "Bearer " + conf.key},
                             data: body,
-                            timeout: 45000,
-                            onload: (resp: any) => {
-                                try {
-                                    const j = JSON.parse(resp.responseText);
-                                    if (j && j.error) {
-                                        res({ ok: false, error: String(j.error.message || "") });
-                                        return;
-                                    }
-                                    const c = (j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || "";
-                                    res(c ? { ok: true, text: String(c) } : { ok: false, error: "空回复" });
-                                } catch (e) {
-                                    res({ ok: false, error: "解析失败 HTTP " + resp.status });
-                                }
-                            },
+                            timeout: 60000,
+                            onload: (resp: any) => handle(resp.responseText, resp.status),
                             onerror: () => res({ ok: false, error: "网络错误" }),
                             ontimeout: () => res({ ok: false, error: "超时" }),
                         });
@@ -233,18 +241,7 @@ export function ReasonFromText(questionText: string, typeName: string, validLett
                         headers: {"Content-Type": "application/json", "Authorization": "Bearer " + conf.key},
                         body: body,
                     }).then(async (r) => {
-                        const t = await r.text();
-                        try {
-                            const j = JSON.parse(t);
-                            if (j && j.error) {
-                                res({ ok: false, error: String(j.error.message || "") });
-                                return;
-                            }
-                            const c = (j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || "";
-                            res(c ? { ok: true, text: String(c) } : { ok: false, error: "空回复" });
-                        } catch (e) {
-                            res({ ok: false, error: "解析失败" });
-                        }
+                        handle(await r.text(), r.status);
                     }).catch(() => res({ ok: false, error: "网络错误" }));
                 } catch (e) {
                     res({ ok: false, error: String(e) });
@@ -294,7 +291,11 @@ export function ReasonFromText(questionText: string, typeName: string, validLett
                 return;
             }
             const model = models[Math.min(idx % models.length, models.length - 1)];
-            const r = await ask(model);
+            let r = await ask(model, webSearchEnabled);
+            // 模型不支持联网工具就退回普通请求
+            if (!r.ok && webSearchEnabled && /tool|web_search|search|不支持|invalid/i.test(String(r.error || ""))) {
+                r = await ask(model, false);
+            }
             if (r.ok && r.text) {
                 usedModel = model;
                 let ls = parseLetters(r.text);

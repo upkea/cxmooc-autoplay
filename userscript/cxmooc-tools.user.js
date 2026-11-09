@@ -521,11 +521,12 @@ function VisionOCR(imageDataUrl) {
         "只输出转录的文字，不要作答，不要解释。");
 }
 exports.VisionOCR = VisionOCR;
-// 文本推理：拿到干净题目文字后，用强文本模型解题并投票
+// 文本推理：拿到干净题目文字后，用强文本模型解题并投票（支持联网搜索）
 function ReasonFromText(questionText, typeName, validLetters, votes) {
     var _this = this;
     var conf = AIConfig();
     var reasonModel = cfg("ai_reason_model", "glm-4-plus");
+    var webSearchEnabled = cfg("ai_web_search", "true") != "false";
     var models = [];
     var pushModel = function (m) {
         if (m && models.indexOf(m) < 0) {
@@ -539,7 +540,9 @@ function ReasonFromText(questionText, typeName, validLetters, votes) {
     var lettersHint = validLetters.join("/");
     var prompt = "下面是一道中文" + typeName + "的题目（文字由图片转写而来，可能有极个别错字，请按上下文理解）：\n\n" +
         String(questionText || "").slice(0, 3000) + "\n\n" +
-        "请先在内心分析每个选项，判断正确答案。最后单独一行输出：答案：X" +
+        "请先在内心分析每个选项，判断正确答案。" +
+        (webSearchEnabled ? "题目属于网课测验，网上通常有原题和答案，可以联网搜索核对（搜索原题干关键句）。" : "") +
+        "最后单独一行输出：答案：X" +
         (validLetters.length <= 2 ? "（只输出一个字母）" : "（多选输出多个字母，如 答案：ABD；单选只输出一个字母）") +
         "。答案字母只能是 " + lettersHint + " 之一。除了最后一行，不要输出其他内容。";
     return new Promise(function (resolve) {
@@ -567,14 +570,32 @@ function ReasonFromText(questionText, typeName, validLetters, votes) {
             }
             return out;
         };
-        var ask = function (model) {
-            var body = JSON.stringify({
+        var ask = function (model, useWeb) {
+            var payload = {
                 model: model,
                 temperature: votes > 1 ? 0.8 : 0,
-                max_tokens: 400,
+                max_tokens: 700,
                 messages: [{ role: "user", content: prompt }],
-            });
+            };
+            if (useWeb) {
+                payload.tools = [{ type: "web_search", web_search: { enable: true, search_result: true } }];
+            }
+            var body = JSON.stringify(payload);
             return new Promise(function (res) {
+                var handle = function (text, status) {
+                    try {
+                        var j = JSON.parse(text);
+                        if (j && j.error) {
+                            res({ ok: false, error: "接口错误 " + (j.error.code || "") + " " + String(j.error.message || "").slice(0, 60) });
+                            return;
+                        }
+                        var c = (j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || "";
+                        res(c ? { ok: true, text: String(c) } : { ok: false, error: "空回复 HTTP " + status });
+                    }
+                    catch (e) {
+                        res({ ok: false, error: "解析失败 HTTP " + status });
+                    }
+                };
                 try {
                     var gx = window.GM_xmlhttpRequest;
                     if (typeof gx == "function") {
@@ -583,21 +604,8 @@ function ReasonFromText(questionText, typeName, validLetters, votes) {
                             url: conf.base + "/chat/completions",
                             headers: { "Content-Type": "application/json", "Authorization": "Bearer " + conf.key },
                             data: body,
-                            timeout: 45000,
-                            onload: function (resp) {
-                                try {
-                                    var j = JSON.parse(resp.responseText);
-                                    if (j && j.error) {
-                                        res({ ok: false, error: String(j.error.message || "") });
-                                        return;
-                                    }
-                                    var c = (j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || "";
-                                    res(c ? { ok: true, text: String(c) } : { ok: false, error: "空回复" });
-                                }
-                                catch (e) {
-                                    res({ ok: false, error: "解析失败 HTTP " + resp.status });
-                                }
-                            },
+                            timeout: 60000,
+                            onload: function (resp) { return handle(resp.responseText, resp.status); },
                             onerror: function () { return res({ ok: false, error: "网络错误" }); },
                             ontimeout: function () { return res({ ok: false, error: "超时" }); },
                         });
@@ -608,24 +616,14 @@ function ReasonFromText(questionText, typeName, validLetters, votes) {
                         headers: { "Content-Type": "application/json", "Authorization": "Bearer " + conf.key },
                         body: body,
                     }).then(function (r) { return __awaiter(_this, void 0, void 0, function () {
-                        var t, j, c;
-                        return __generator(this, function (_a) {
-                            switch (_a.label) {
-                                case 0: return [4 /*yield*/, r.text()];
+                        var _a;
+                        return __generator(this, function (_b) {
+                            switch (_b.label) {
+                                case 0:
+                                    _a = handle;
+                                    return [4 /*yield*/, r.text()];
                                 case 1:
-                                    t = _a.sent();
-                                    try {
-                                        j = JSON.parse(t);
-                                        if (j && j.error) {
-                                            res({ ok: false, error: String(j.error.message || "") });
-                                            return [2 /*return*/];
-                                        }
-                                        c = (j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || "";
-                                        res(c ? { ok: true, text: String(c) } : { ok: false, error: "空回复" });
-                                    }
-                                    catch (e) {
-                                        res({ ok: false, error: "解析失败" });
-                                    }
+                                    _a.apply(void 0, [_b.sent(), r.status]);
                                     return [2 /*return*/];
                             }
                         });
@@ -682,9 +680,15 @@ function ReasonFromText(questionText, typeName, validLetters, votes) {
                             return [2 /*return*/];
                         }
                         model = models[Math.min(idx % models.length, models.length - 1)];
-                        return [4 /*yield*/, ask(model)];
+                        return [4 /*yield*/, ask(model, webSearchEnabled)];
                     case 1:
                         r = _a.sent();
+                        if (!(!r.ok && webSearchEnabled && /tool|web_search|search|不支持|invalid/i.test(String(r.error || "")))) return [3 /*break*/, 3];
+                        return [4 /*yield*/, ask(model, false)];
+                    case 2:
+                        r = _a.sent();
+                        _a.label = 3;
+                    case 3:
                         if (r.ok && r.text) {
                             usedModel = model;
                             ls = parseLetters(r.text);
