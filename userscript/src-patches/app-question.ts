@@ -510,15 +510,7 @@ export class ToolsQuestionBankFacade implements QuestionBankFacade {
                             let img = await CaptureQuestionImage(el);
                             if (img) {
                                 let typeName = type == 1 ? "单选题" : (type == 2 ? "多选题" : (type == 3 ? "判断题" : "填空题"));
-                                let vr = await AskAIVision(
-                                    img,
-                                    "图片是一道中文" + typeName + "的题目截图（页面有字体保护，图片里显示的文字是真实的）。" +
-                                    "请仔细阅读图片中的题干和所有选项，先在内心分析每个选项是否正确，再给出答案。" +
-                                    "最后单独一行输出：答案：X" +
-                                    (type == 3 ? "（A 表示对，B 表示错，只输出一个字母）" : (type == 2 ? "（多选输出多个字母，如 答案：ABD）" : "（单选题只输出一个字母）")) +
-                                    "。除了最后一行，不要输出其他内容。"
-                                );
-                                // 从选项列表推出可用字母（防止模型输出 H 这类不存在的选项）
+                                // 从选项列表推出可用字母（防止模型输出不存在的选项）
                                 let validLetters: string[] = [];
                                 for (let oi = 0; oi < options.length; oi++) {
                                     let lo = String(options[oi].option || "").trim().toUpperCase();
@@ -547,37 +539,101 @@ export class ToolsQuestionBankFacade implements QuestionBankFacade {
                                         let last = lines.length > 0 ? lines[lines.length - 1] : txt;
                                         push(String(last).toUpperCase().match(/[A-H]/g) || []);
                                     }
+                                    if (type == 1 || type == 3) {
+                                        letters = letters.slice(0, 1);
+                                    }
                                     return letters;
                                 };
+                                // 三投两中投票：同一张题图问 3 次（可配置 ai_vision_votes），取多数
+                                let votes: string[][] = [];
+                                let usedModel = "";
+                                let votesWanted = 3;
+                                try {
+                                    const vv = parseInt(Application.App.config.GetConfig("ai_vision_votes", "3"), 10);
+                                    if (!isNaN(vv) && vv >= 1 && vv <= 5) {
+                                        votesWanted = vv;
+                                    }
+                                } catch (e) { /* ignore */ }
+                                let prompt1 =
+                                    "图片是一道中文" + typeName + "的题目截图（页面有字体保护，图片里显示的文字是真实的）。" +
+                                    "请仔细阅读图片中的题干和所有选项，先在内心分析每个选项是否正确，再给出答案。" +
+                                    "最后单独一行输出：答案：X" +
+                                    (type == 3 ? "（A 表示对，B 表示错，只输出一个字母）" : (type == 2 ? "（多选输出多个字母，如 答案：ABD）" : "（单选题只输出一个字母）")) +
+                                    "。选项字母只能是 " + validLetters.join("/") + " 之一。除了最后一行，不要输出其他内容。";
+                                for (let v = 0; v < votesWanted; v++) {
+                                    let vr = await AskAIVision(img, prompt1);
+                                    if (vr.ok && vr.text) {
+                                        usedModel = vr.model || usedModel;
+                                        let ls = parseLetters(String(vr.text));
+                                        if (ls.length > 0) {
+                                            votes.push(ls);
+                                        }
+                                    }
+                                }
+                                // 投票结果
                                 let letters: string[] = [];
                                 let visionRaw = "";
-                                if (vr.ok && vr.text) {
-                                    visionRaw = String(vr.text);
-                                    letters = parseLetters(visionRaw);
+                                let bestLog = "";
+                                if (votes.length > 0 && type == 2) {
+                                    // 多选：字母出现 >= 半数票 才算
+                                    for (let li = 0; li < validLetters.length; li++) {
+                                        let cnt = 0;
+                                        for (let vi = 0; vi < votes.length; vi++) {
+                                            if (votes[vi].indexOf(validLetters[li]) >= 0) {
+                                                cnt++;
+                                            }
+                                        }
+                                        if (cnt * 2 >= votes.length && cnt > 0) {
+                                            letters.push(validLetters[li]);
+                                        }
+                                    }
+                                    bestLog = votes.map((v) => v.join("")).join(",");
+                                } else if (votes.length > 0) {
+                                    // 单选/判断：票数最多者，平票取第一票的
+                                    let tally: { [k: string]: number } = {};
+                                    for (let vi = 0; vi < votes.length; vi++) {
+                                        let key = votes[vi][0];
+                                        tally[key] = (tally[key] || 0) + 1;
+                                    }
+                                    let best = "";
+                                    let bestCnt = 0;
+                                    for (let k in tally) {
+                                        if (tally[k] > bestCnt || (tally[k] == bestCnt && best == "")) {
+                                            best = k;
+                                            bestCnt = tally[k];
+                                        }
+                                    }
+                                    if (best) {
+                                        letters = [best];
+                                        if (bestCnt <= 1 && votes.length > 1) {
+                                            // 3 票全不齐怎么办：取投票第一票
+                                            let first = votes[0][0];
+                                            if (tally[first] === undefined) {
+                                                letters = [first];
+                                            }
+                                        }
+                                    }
+                                    bestLog = votes.map((v) => v.join("")).join(",") + " => " + best + "(" + bestCnt + "/" + votes.length + ")";
                                 }
-                                // 拿不到合法字母就再试一次极简提示（不要解释、只回字母）
-                                if (letters.length == 0) {
+                                if (letters.length == 0 && votes.length == 0) {
+                                    // 一次极简重试
                                     let vr2 = await AskAIVision(img, "看图回答：" + typeName + "，只输出正确选项的字母（" + validLetters.join("/") + "），不要任何解释。");
                                     if (vr2.ok && vr2.text) {
                                         visionRaw = String(vr2.text);
                                         letters = parseLetters(visionRaw);
+                                        usedModel = vr2.model || usedModel;
                                     }
                                 }
                                 if (letters.length > 0) {
-                                    if (type == 1 || type == 3) {
-                                        letters = letters.slice(0, 1);
-                                    }
-                                    Application.App.log.Info("视觉读题答案：" + letters.join(""));
+                                    Application.App.log.Info("视觉读题答案：" + letters.join("") + "（模型 " + usedModel + "，投票 " + (bestLog || letters.join("")) + "）");
                                     if (type == 3) {
                                         // 判断题：A=对(true) B=错(false)，后续统一转换逻辑会映射到题目自己的选项值
                                         ret = {ok: true, correct: [{option: <any>(letters[0] == "A"), content: ""}], raw: "vision:" + letters.join(""), vision: true};
                                     } else {
                                         ret = {ok: true, correct: letters.map((l) => ({option: l, content: ""})), raw: "vision:" + letters.join(""), vision: true};
                                     }
-                                } else if (vr.error) {
-                                    Application.App.log.Warn("视觉读题失败：" + vr.error + "（回退文字模式）");
                                 } else {
-                                    Application.App.log.Warn("视觉读题未给出有效选项（" + visionRaw.replace(/\s+/g, " ").slice(0, 40) + "）");
+                                    Application.App.log.Warn("视觉读题未给出有效选项（" + String(visionRaw || "").replace(/\s+/g, " ").slice(0, 40) + "）回退文字模式");
                                 }
                             }
                         }

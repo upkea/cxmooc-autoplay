@@ -136,6 +136,7 @@ export interface VisionResult {
     ok: boolean;
     text?: string;
     error?: string;
+    model?: string;
 }
 
 // 用视觉模型读题：图片 + 提示词 → 回答文本
@@ -183,7 +184,7 @@ export function AskAIVision(imageDataUrl: string, prompt: string): Promise<Visio
                     tryNext();
                     return;
                 }
-                resolve({ok: true, text: String(content)});
+                resolve({ok: true, text: String(content), model: model});
             };
             const onErr = (msg: string) => {
                 lastErr = msg + "(" + model + ")";
