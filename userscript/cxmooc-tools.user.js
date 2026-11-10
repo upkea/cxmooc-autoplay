@@ -476,6 +476,11 @@ function CaptureQuestionImage(el) {
                 resolve(null);
                 return;
             }
+            // 强制瞬间滚到元素中心（覆盖 CSS scroll-behavior:smooth），滚两次保险
+            try {
+                el.scrollIntoView({ block: "center", behavior: "auto" });
+            }
+            catch (e) { /* ignore */ }
             try {
                 el.scrollIntoView({ block: "center" });
             }
@@ -496,57 +501,75 @@ function CaptureQuestionImage(el) {
                 }
                 catch (e) { /* ignore */ }
             };
+            // 等滚动/布局彻底稳定，再量坐标
             setTimeout(function () {
                 try {
-                    var r = el.getBoundingClientRect();
-                    var offX = r.left;
-                    var offY = r.top;
-                    var pw = w_1;
-                    var depth = 0;
-                    try {
-                        while (pw && pw.parent && pw.parent !== pw && depth < 6) {
-                            var fe = null;
+                    var measure = function () {
+                        var r = el.getBoundingClientRect();
+                        // 没滚到位（元素还在视口外）就再滚一次重测
+                        if (r.top < -60 || r.top > (w_1.innerHeight || 900)) {
                             try {
-                                fe = pw.frameElement;
+                                el.scrollIntoView({ block: "center" });
+                            }
+                            catch (e) { /* ignore */ }
+                        }
+                        requestAnimationFrame(function () {
+                            try {
+                                var r2 = el.getBoundingClientRect();
+                                var offX = r2.left;
+                                var offY = r2.top;
+                                var pw = w_1;
+                                var depth = 0;
+                                try {
+                                    while (pw && pw.parent && pw.parent !== pw && depth < 6) {
+                                        var fe = null;
+                                        try {
+                                            fe = pw.frameElement;
+                                        }
+                                        catch (e) {
+                                            fe = null;
+                                        }
+                                        if (!fe) {
+                                            break;
+                                        }
+                                        var fr = fe.getBoundingClientRect();
+                                        offX += fr.left;
+                                        offY += fr.top;
+                                        pw = pw.parent;
+                                        depth++;
+                                    }
+                                }
+                                catch (e) { /* ignore */ }
+                                // getBoundingClientRect 已是视口坐标（含滚动），不再额外减 scroll
+                                var rect = {
+                                    x: Math.max(0, Math.round(offX - 10)),
+                                    y: Math.max(0, Math.round(offY - 10)),
+                                    width: Math.min(Math.max(Math.round(r2.width + 20), 420), 1400),
+                                    height: Math.min(Math.max(Math.round(r2.height + 300), 460), 1600),
+                                };
+                                w_1.cxCapture(rect)
+                                    .then(function (res) {
+                                    restore_1();
+                                    resolve(res && res.dataUrl ? res.dataUrl : null);
+                                })
+                                    .catch(function () {
+                                    restore_1();
+                                    resolve(null);
+                                });
                             }
                             catch (e) {
-                                fe = null;
+                                restore_1();
+                                resolve(null);
                             }
-                            if (!fe) {
-                                break;
-                            }
-                            var fr = fe.getBoundingClientRect();
-                            offX += fr.left;
-                            offY += fr.top;
-                            pw = pw.parent;
-                            depth++;
-                        }
-                        offX -= pw.scrollX || 0;
-                        offY -= pw.scrollY || 0;
-                    }
-                    catch (e) { /* ignore */ }
-                    // 裁剪区域（视口坐标）：留白保证选项齐全
-                    var rect = {
-                        x: Math.max(0, Math.round(offX - 10)),
-                        y: Math.max(0, Math.round(offY - 10)),
-                        width: Math.min(Math.max(Math.round(r.width + 20), 420), 1400),
-                        height: Math.min(Math.max(Math.round(r.height + 260), 420), 1600),
+                        });
                     };
-                    w_1.cxCapture(rect)
-                        .then(function (res) {
-                        restore_1();
-                        resolve(res && res.dataUrl ? res.dataUrl : null);
-                    })
-                        .catch(function () {
-                        restore_1();
-                        resolve(null);
-                    });
+                    measure();
                 }
                 catch (e) {
                     restore_1();
                     resolve(null);
                 }
-            }, 300);
+            }, 450);
         }
         catch (e) {
             resolve(null);
