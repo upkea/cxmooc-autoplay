@@ -1811,7 +1811,7 @@ var ToolsQuestionBankFacade = /** @class */ (function () {
                                         if (!(ocr.ok && ocr.text && String(ocr.text).trim().length >= 8)) return [3 /*break*/, 7];
                                         ocrText = String(ocr.text).trim();
                                         ocrModel = ocr.model || "";
-                                        application_1.Application.App.log.Info("视觉转录（" + ocrModel + "）：" + ocrText.replace(/\s+/g, " ").slice(0, 60));
+                                        application_1.Application.App.log.Info("视觉转录（" + ocrModel + "）：" + ocrText.replace(/\s+/g, " "));
                                         ai_1.ShowVisionPreview(img, "转录完成，文本模型解题中…");
                                         return [4 /*yield*/, ai_1.ReasonFromText(ocrText, typeName, validLetters_1, votesWanted)];
                                     case 6:

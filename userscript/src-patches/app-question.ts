@@ -566,7 +566,7 @@ export class ToolsQuestionBankFacade implements QuestionBankFacade {
                                     if (ocr.ok && ocr.text && String(ocr.text).trim().length >= 8) {
                                         ocrText = String(ocr.text).trim();
                                         ocrModel = ocr.model || "";
-                                        Application.App.log.Info("视觉转录（" + ocrModel + "）：" + ocrText.replace(/\s+/g, " ").slice(0, 60));
+                                        Application.App.log.Info("视觉转录（" + ocrModel + "）：" + ocrText.replace(/\s+/g, " "));
                                         ShowVisionPreview(img, "转录完成，文本模型解题中…");
                                         let rr = await ReasonFromText(ocrText, typeName, validLetters, votesWanted);
                                         if (rr.ok && rr.letters.length > 0) {
