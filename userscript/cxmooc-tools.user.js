@@ -7445,6 +7445,7 @@ var CxCourseTopic = /** @class */ (function (_super) {
                         if (this.context.document.URL.indexOf("selectWorkQuestionYiPiYue") > 0) {
                             return [2 /*return*/, null];
                         }
+                        if (!!ai_1.VisionEnabled()) return [3 /*break*/, 4];
                         _a.label = 1;
                     case 1:
                         _a.trys.push([1, 3, , 4]);

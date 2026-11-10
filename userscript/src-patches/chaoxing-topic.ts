@@ -11,7 +11,7 @@ import {CxQuestionFactory} from "./question";
 import {Topic, QueryQuestions} from "@App/internal/app/topic";
 import {CxTaskControlBar, CxTask} from "@App/mooc/chaoxing/task";
 import {TaskType} from "@App/internal/app/task";
-import {AIEnabled} from "@App/internal/app/ai";
+import {AIEnabled, VisionEnabled} from "@App/internal/app/ai";
 import {DecodeChaoxingFont} from "./font-decode";
 
 export class CxTopicControlBar extends CxTaskControlBar {
@@ -178,11 +178,15 @@ export class CxCourseTopic extends Topic {
         if (this.context.document.URL.indexOf("selectWorkQuestionYiPiYue") > 0) {
             return null;
         }
-        // 学习通有些题目用字体加密，先解密再抓题
-        try {
-            await DecodeChaoxingFont(this.context);
-        } catch (e) {
-            // ignore
+        // 学习通有些题目用字体加密。视觉读题模式读的是「页面渲染后的正确字形」，
+        // 不需要也不能做 DOM 字体解密——否则首屏字库未就绪时字形误匹配，会把选项
+        // 文字改成错字（如 f）甚至清空。仅文字模式才解密。
+        if (!VisionEnabled()) {
+            try {
+                await DecodeChaoxingFont(this.context);
+            } catch (e) {
+                // ignore
+            }
         }
         return super.QueryAnswer();
     }
