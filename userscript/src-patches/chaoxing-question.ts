@@ -304,24 +304,48 @@ abstract class cxQuestion implements Question {
     }
 
     protected options(): NodeListOf<HTMLLIElement> {
+        let ret = new Array<HTMLLIElement>();
+        let addAll = (root: Element) => {
+            if (!root) {
+                return;
+            }
+            let lis = root.querySelectorAll("li");
+            for (let i = 0; i < lis.length; i++) {
+                if (ret.indexOf(lis[i]) < 0) {
+                    ret.push(lis[i]);
+                }
+            }
+        };
+        // 1) 常见选项容器
         let tmpel = <HTMLElement>this.el.querySelector(
-            ".clearfix > ul,.clearfix ul.Zy_ulBottom.clearfix,ul.Zy_ulTk,.Zy_ulTop,ul.Zy_ulTop,.Zy_ulBottom,ul.Zy_ulBottom"
+            ".clearfix > ul,.clearfix ul.Zy_ulBottom.clearfix,ul.Zy_ulTk,.Zy_ulTop,ul.Zy_ulTop,.Zy_ulBottom,ul.Zy_ulBottom,.Zy_ulList"
         );
         if (tmpel) {
-            return tmpel.querySelectorAll("li");
-        }
-        // 兜底：题目元素下所有带输入框的 li
-        let all = <NodeListOf<HTMLLIElement>>this.el.querySelectorAll("li");
-        let ret = new Array<HTMLLIElement>();
-        for (let i = 0; i < all.length; i++) {
-            if (all[i].querySelector("input,a")) {
-                ret.push(all[i]);
+            let lis = tmpel.querySelectorAll("li");
+            if (lis.length > 0) {
+                return lis;
             }
         }
-        if (ret.length > 0) {
-            return <any>ret;
+        // 2) 题目元素下所有 li
+        addAll(this.el);
+        // 3) 扩大到题目卡片容器（.TiMu 或父级）
+        if (ret.length == 0) {
+            try {
+                let card: Element = this.el.closest ? this.el.closest(".TiMu") : null;
+                if (!card) {
+                    card = this.el.parentElement;
+                }
+                addAll(card);
+            } catch (e) { /* ignore */ }
         }
-        return all;
+        // 4) 只要带输入框/可点击的 li
+        if (ret.length > 1) {
+            let withInput = ret.filter((li) => !!li.querySelector("input,label,a,i,span"));
+            if (withInput.length > 0) {
+                return <any>withInput;
+            }
+        }
+        return <any>ret;
     }
 
     protected isCorrect(): Element {
@@ -627,17 +651,43 @@ class cxJudgeQuestion extends cxSelectQuestion implements Question {
         if (!el) {
             return;
         }
+        let clicked = false;
         try {
             let tmpel = <HTMLInputElement>el.querySelector("label > input,input");
             if (tmpel) {
                 if (!tmpel.checked) {
                     tmpel.click();
                 }
-            } else {
-                el.click();
+                clicked = true;
             }
         } catch (e) {
             // 页面自己的脚本可能在这里抛错，忽略它，别让整题失败
+        }
+        if (!clicked) {
+            // 没有 input：依次尝试点 label / 选项序号 / 选项文字 / li 本身
+            try {
+                let inner = <HTMLElement>el.querySelector("label,.num_option,.answer_p,span,i,a");
+                if (inner && inner !== el) {
+                    inner.click();
+                    clicked = true;
+                }
+            } catch (e) {
+                // ignore
+            }
+        }
+        if (!clicked) {
+            try {
+                el.click();
+            } catch (e) {
+                // ignore
+            }
+        }
+        // 补一次鼠标事件（部分页面只监听 mousedown/mouseup）
+        try {
+            el.dispatchEvent(new MouseEvent("mousedown", {bubbles: true, cancelable: true, view: window}));
+            el.dispatchEvent(new MouseEvent("mouseup", {bubbles: true, cancelable: true, view: window}));
+        } catch (e) {
+            // ignore
         }
         try {
             this.AddNotice(this.getContent(el));

@@ -5713,22 +5713,47 @@ var cxQuestion = /** @class */ (function () {
         return this.type;
     };
     cxQuestion.prototype.options = function () {
-        var tmpel = this.el.querySelector(".clearfix > ul,.clearfix ul.Zy_ulBottom.clearfix,ul.Zy_ulTk,.Zy_ulTop,ul.Zy_ulTop,.Zy_ulBottom,ul.Zy_ulBottom");
-        if (tmpel) {
-            return tmpel.querySelectorAll("li");
-        }
-        // 兜底：题目元素下所有带输入框的 li
-        var all = this.el.querySelectorAll("li");
         var ret = new Array();
-        for (var i = 0; i < all.length; i++) {
-            if (all[i].querySelector("input,a")) {
-                ret.push(all[i]);
+        var addAll = function (root) {
+            if (!root) {
+                return;
+            }
+            var lis = root.querySelectorAll("li");
+            for (var i = 0; i < lis.length; i++) {
+                if (ret.indexOf(lis[i]) < 0) {
+                    ret.push(lis[i]);
+                }
+            }
+        };
+        // 1) 常见选项容器
+        var tmpel = this.el.querySelector(".clearfix > ul,.clearfix ul.Zy_ulBottom.clearfix,ul.Zy_ulTk,.Zy_ulTop,ul.Zy_ulTop,.Zy_ulBottom,ul.Zy_ulBottom,.Zy_ulList");
+        if (tmpel) {
+            var lis = tmpel.querySelectorAll("li");
+            if (lis.length > 0) {
+                return lis;
             }
         }
-        if (ret.length > 0) {
-            return ret;
+        // 2) 题目元素下所有 li
+        addAll(this.el);
+        // 3) 扩大到题目卡片容器（.TiMu 或父级）
+        if (ret.length == 0) {
+            try {
+                var card = this.el.closest ? this.el.closest(".TiMu") : null;
+                if (!card) {
+                    card = this.el.parentElement;
+                }
+                addAll(card);
+            }
+            catch (e) { /* ignore */ }
         }
-        return all;
+        // 4) 只要带输入框/可点击的 li
+        if (ret.length > 1) {
+            var withInput = ret.filter(function (li) { return !!li.querySelector("input,label,a,i,span"); });
+            if (withInput.length > 0) {
+                return withInput;
+            }
+        }
+        return ret;
     };
     cxQuestion.prototype.isCorrect = function () {
         var el = this.el.querySelector(".Py_answer.clearfix,.Py_tk");
@@ -6043,19 +6068,47 @@ var cxJudgeQuestion = /** @class */ (function (_super) {
         if (!el) {
             return;
         }
+        var clicked = false;
         try {
             var tmpel = el.querySelector("label > input,input");
             if (tmpel) {
                 if (!tmpel.checked) {
                     tmpel.click();
                 }
-            }
-            else {
-                el.click();
+                clicked = true;
             }
         }
         catch (e) {
             // 页面自己的脚本可能在这里抛错，忽略它，别让整题失败
+        }
+        if (!clicked) {
+            // 没有 input：依次尝试点 label / 选项序号 / 选项文字 / li 本身
+            try {
+                var inner = el.querySelector("label,.num_option,.answer_p,span,i,a");
+                if (inner && inner !== el) {
+                    inner.click();
+                    clicked = true;
+                }
+            }
+            catch (e) {
+                // ignore
+            }
+        }
+        if (!clicked) {
+            try {
+                el.click();
+            }
+            catch (e) {
+                // ignore
+            }
+        }
+        // 补一次鼠标事件（部分页面只监听 mousedown/mouseup）
+        try {
+            el.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, view: window }));
+            el.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, cancelable: true, view: window }));
+        }
+        catch (e) {
+            // ignore
         }
         try {
             this.AddNotice(this.getContent(el));
