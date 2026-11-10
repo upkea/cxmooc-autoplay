@@ -739,16 +739,36 @@ export class ToolsQuestionBankFacade implements QuestionBankFacade {
                                     continue;
                                 }
                                 let li: any = opts[idx2];
-                                try {
-                                    if (typeof qwin.addChoice == "function") {
-                                        qwin.addChoice(li);
-                                    } else {
-                                        li.click();
-                                    }
-                                    Application.App.log.Info("直填 " + String.fromCharCode(65 + idx2) + " → aria=" + String(li.getAttribute ? li.getAttribute("aria-checked") : "?"));
-                                } catch (de) {
-                                    Application.App.log.Warn("直填失败：" + String((de && de.message) || de));
+                                let done = false;
+                                // 多选题：addChoice 对 checkbox 常抛 Illegal invocation，优先用可信真实点击
+                                if (type == 2) {
+                                    try {
+                                        let ck = (<any>window).cxClickEl;
+                                        if (typeof ck == "function") {
+                                            let pr = ck(li);
+                                            if (pr && pr.catch) {
+                                                pr.catch(() => {});
+                                            }
+                                            done = true;
+                                        }
+                                    } catch (e) { /* ignore */ }
                                 }
+                                if (!done) {
+                                    try {
+                                        if (typeof qwin.addChoice == "function") {
+                                            qwin.addChoice(li);
+                                        } else {
+                                            li.click();
+                                        }
+                                        done = true;
+                                    } catch (de) {
+                                        Application.App.log.Warn("直填失败：" + String((de && de.message) || de));
+                                        try {
+                                            li.click();
+                                        } catch (e2) { /* ignore */ }
+                                    }
+                                }
+                                Application.App.log.Info("直填 " + String.fromCharCode(65 + idx2) + " → aria=" + String(li.getAttribute ? li.getAttribute("aria-checked") : "?"));
                             }
                             // 校验：多选可信点击是异步的，稍等再读
                             let savedWant = wantIdx.slice();

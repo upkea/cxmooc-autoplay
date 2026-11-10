@@ -1773,7 +1773,7 @@ var ToolsQuestionBankFacade = /** @class */ (function () {
                         status = "success";
                         interval = application_1.Application.App.config.topic_interval * 1000;
                         _loop_1 = function (i) {
-                            var q, type_1, options, title, parts, k, ret, el, img, typeName, validLetters_1, oi, lo, parseLetters, votes, usedModel, votesWanted, vv, letters, visionRaw, bestLog, ocrText, ocrModel, ocr, rr, e_1, vr2, e_2, r2, r3, voted, e_3, rate, wrong, correct, wantTrue, mapped, k, text, isTrue, isFalse, idx, answer, directOk, qel_1, qdoc_1, qwin, opts_1, wantIdx, di, opt, idx, cv, wi, idx2, li, savedWant_1, savedOpts_1, savedQwin, check, tmp, _a, e3_1, e_4;
+                            var q, type_1, options, title, parts, k, ret, el, img, typeName, validLetters_1, oi, lo, parseLetters, votes, usedModel, votesWanted, vv, letters, visionRaw, bestLog, ocrText, ocrModel, ocr, rr, e_1, vr2, e_2, r2, r3, voted, e_3, rate, wrong, correct, wantTrue, mapped, k, text, isTrue, isFalse, idx, answer, directOk, qel_1, qdoc_1, qwin, opts_1, wantIdx, di, opt, idx, cv, wi, idx2, li, done, ck, pr, savedWant_1, savedOpts_1, savedQwin, check, tmp, _a, e3_1, e_4;
                             return __generator(this, function (_b) {
                                 switch (_b.label) {
                                     case 0:
@@ -2089,18 +2089,40 @@ var ToolsQuestionBankFacade = /** @class */ (function () {
                                                             continue;
                                                         }
                                                         li = opts_1[idx2];
-                                                        try {
-                                                            if (typeof qwin.addChoice == "function") {
-                                                                qwin.addChoice(li);
+                                                        done = false;
+                                                        // 多选题：addChoice 对 checkbox 常抛 Illegal invocation，优先用可信真实点击
+                                                        if (type_1 == 2) {
+                                                            try {
+                                                                ck = window.cxClickEl;
+                                                                if (typeof ck == "function") {
+                                                                    pr = ck(li);
+                                                                    if (pr && pr.catch) {
+                                                                        pr.catch(function () { });
+                                                                    }
+                                                                    done = true;
+                                                                }
                                                             }
-                                                            else {
-                                                                li.click();
+                                                            catch (e) { /* ignore */ }
+                                                        }
+                                                        if (!done) {
+                                                            try {
+                                                                if (typeof qwin.addChoice == "function") {
+                                                                    qwin.addChoice(li);
+                                                                }
+                                                                else {
+                                                                    li.click();
+                                                                }
+                                                                done = true;
                                                             }
-                                                            application_1.Application.App.log.Info("直填 " + String.fromCharCode(65 + idx2) + " → aria=" + String(li.getAttribute ? li.getAttribute("aria-checked") : "?"));
+                                                            catch (de) {
+                                                                application_1.Application.App.log.Warn("直填失败：" + String((de && de.message) || de));
+                                                                try {
+                                                                    li.click();
+                                                                }
+                                                                catch (e2) { /* ignore */ }
+                                                            }
                                                         }
-                                                        catch (de) {
-                                                            application_1.Application.App.log.Warn("直填失败：" + String((de && de.message) || de));
-                                                        }
+                                                        application_1.Application.App.log.Info("直填 " + String.fromCharCode(65 + idx2) + " → aria=" + String(li.getAttribute ? li.getAttribute("aria-checked") : "?"));
                                                     }
                                                     savedWant_1 = wantIdx.slice();
                                                     savedOpts_1 = opts_1;
