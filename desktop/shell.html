@@ -1,0 +1,43 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>学习通学习辅助</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; overflow: hidden; background: #1e2329; font-family: "Microsoft YaHei", "Segoe UI", sans-serif; }
+  #tabbar {
+    display: flex; align-items: stretch; height: 38px; background: #2a3038;
+    border-bottom: 1px solid #12161b; user-select: none;
+  }
+  .tab {
+    display: flex; align-items: center; gap: 6px; padding: 0 10px 0 14px;
+    min-width: 110px; max-width: 220px; background: #232930; color: #aeb6c0;
+    border-right: 1px solid #12161b; font-size: 12px; cursor: default;
+  }
+  .tab.active { background: #1e2329; color: #eef1f4; box-shadow: inset 0 2px 0 #3aa75a; }
+  .tab .title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tab .close { width: 16px; height: 16px; line-height: 14px; text-align: center; border-radius: 3px; color: #8a929c; }
+  .tab .close:hover { background: #3d444d; color: #fff; }
+  #newtab {
+    width: 38px; flex: none; display: flex; align-items: center; justify-content: center;
+    color: #aeb6c0; font-size: 18px; cursor: default; background: #232930;
+    border-right: 1px solid #12161b;
+  }
+  #newtab:hover { background: #2f363e; color: #fff; }
+  #views { position: absolute; top: 38px; left: 0; right: 0; bottom: 0; }
+  webview {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    visibility: hidden;
+  }
+  webview.active { visibility: visible; }
+</style>
+</head>
+<body>
+  <div id="tabbar">
+    <div id="newtab" title="新标签页">+</div>
+  </div>
+  <div id="views"></div>
+  <script src="shell.js"></script>
+</body>
+</html>

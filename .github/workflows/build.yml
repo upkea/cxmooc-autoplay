@@ -1,0 +1,42 @@
+name: build
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    working-directory: desktop
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: node make-bundle.js
+      - run: npm install
+      - run: npx electron-builder --win --publish never
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ELECTRON_BUILDER_BINARIES_MIRROR: https://npmmirror.com/mirrors/electron-builder-binaries/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installer
+          path: desktop/release/*.exe
+      - run: node make-latest-yml-ci.js
+      - if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: release
+          files: |
+            desktop/release/Setup-*.exe
+            desktop/release/Setup-*.blockmap
+            desktop/release/latest.yml

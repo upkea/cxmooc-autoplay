@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>设置 · 学习通学习辅助</title>
+<style>
+  :root { color-scheme: light; }
+  body {
+    margin: 0; padding: 20px 24px;
+    font: 14px/1.7 "Microsoft YaHei", "Segoe UI", sans-serif;
+    color: #2b2b2b; background: #f6f7f9;
+  }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .sub { color: #888; font-size: 12px; margin-bottom: 18px; }
+  .card {
+    background: #fff; border: 1px solid #e5e7eb; border-radius: 10px;
+    padding: 16px 18px; margin-bottom: 16px;
+  }
+  .card h2 { font-size: 14px; margin: 0 0 12px; }
+  .row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+  .row label { width: 86px; flex: none; color: #555; }
+  .row input[type=text], .row input[type=password], .row select {
+    flex: 1; min-width: 0; height: 30px; padding: 0 8px;
+    border: 1px solid #d7dade; border-radius: 6px; font-size: 13px;
+    background: #fff; color: #222; box-sizing: border-box;
+  }
+  .row input:focus, .row select:focus { outline: none; border-color: #409eff; }
+  .row input[readonly] { background: #f2f3f5; }
+  .switch { display: flex; align-items: center; gap: 8px; }
+  .switch input { width: 16px; height: 16px; accent-color: #3aa75a; }
+  .status { font-size: 12px; }
+  .ok { color: #3aa75a; } .bad { color: #d33; } .dim { color: #999; }
+  .btns { display: flex; gap: 10px; margin-top: 6px; flex-wrap: wrap; }
+  button {
+    height: 32px; padding: 0 16px; border-radius: 6px; font-size: 13px;
+    border: 1px solid #d7dade; background: #fff; color: #333; cursor: pointer;
+  }
+  button.primary { background: #409eff; border-color: #409eff; color: #fff; }
+  button:hover { opacity: .88; }
+  button:disabled { opacity: .5; cursor: default; }
+  .foot { color: #999; font-size: 11px; margin-top: 14px; text-align: center; }
+  a { color: #409eff; text-decoration: none; }
+</style>
+</head>
+<body>
+  <h1>学习通 · 学习辅助</h1>
+  <div class="sub">设置保存在本机（%APPDATA% 的应用数据目录），与页面里的「小工具通知条」共用。</div>
+
+  <div class="card">
+    <h2>AI 答题</h2>
+    <div class="row">
+      <label>自动答题</label>
+      <span class="switch">
+        <input type="checkbox" id="ai-enable" checked>
+        <span id="ai-enable-text" class="status dim">开启</span>
+      </span>
+    </div>
+    <div class="row">
+      <label for="ai-provider">服务商</label>
+      <select id="ai-provider">
+        <option value="zhipu">智谱 GLM（glm-4-flash，免费）</option>
+        <option value="siliconflow">硅基流动</option>
+        <option value="deepseek">DeepSeek</option>
+        <option value="custom">自定义</option>
+      </select>
+    </div>
+    <div class="row">
+      <label for="ai-key">API Key</label>
+      <input type="password" id="ai-key" placeholder="sk-...">
+    </div>
+    <div class="row">
+      <label for="ai-base">接口地址</label>
+      <input type="text" id="ai-base" placeholder="https://api.example.com/v1">
+    </div>
+    <div class="row">
+      <label for="ai-model">模型名</label>
+      <input type="text" id="ai-model" placeholder="model-name">
+    </div>
+    <div class="row">
+      <label>视觉读题</label>
+      <span class="switch">
+        <input type="checkbox" id="ai-vision" checked>
+        <span class="status dim">截图让视觉模型读题（破解字体加密最可靠）</span>
+      </span>
+    </div>
+    <div class="row">
+      <label for="ai-vision-model">视觉模型</label>
+      <input type="text" id="ai-vision-model" placeholder="glm-4v-flash（免费）">
+    </div>
+    <div class="btns">
+      <button class="primary" id="btn-save">保存</button>
+      <button id="btn-test">测试连接</button>
+      <span class="status dim" id="ai-status">未检测</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>拟人化</h2>
+    <div class="row">
+      <label for="speed-limit">倍速上限</label>
+      <select id="speed-limit">
+        <option value="1">1x（最稳）</option>
+        <option value="1.5">1.5x</option>
+        <option value="2">2x</option>
+        <option value="3">3x</option>
+        <option value="0">不限</option>
+      </select>
+    </div>
+    <div class="row">
+      <label for="wrong-rate">故意答错率</label>
+      <input type="text" id="wrong-rate" placeholder="0" style="width:90px;flex:none;">
+      <span class="status dim">%（仅单选/判断，0 = 全对）</span>
+    </div>
+    <div class="row">
+      <label>随机延迟</label>
+      <span class="switch">
+        <input type="checkbox" id="random-delay" checked>
+        <span class="status dim">每题间隔加 0~3 秒</span>
+      </span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>窗口</h2>
+    <div class="btns">
+      <button id="btn-open">打开学习通</button>
+      <button id="btn-docs">使用与更新说明</button>
+      <span class="status dim">关闭学习通窗口只会收进托盘，不会退出。</span>
+    </div>
+  </div>
+
+  <div class="foot">
+    MIT · 仅供个人学习辅助使用 · <a href="#" id="lnk-repo">GitHub 仓库</a>
+  </div>
+
+  <script src="settings.js"></script>
+</body>
+</html>

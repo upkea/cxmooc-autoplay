@@ -1,0 +1,61 @@
+{
+  "name": "cxmooc-desktop",
+  "version": "0.2.0",
+  "description": "学习通网课学习辅助桌面版（Electron，MIT，仅供个人学习辅助使用）",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "smoke": "electron . --smoke",
+    "bundle": "node make-bundle.js",
+    "dist": "electron-builder --win"
+  },
+  "author": "upke",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^26.18.0"
+  },
+  "build": {
+    "appId": "com.upke.cxmooc-desktop",
+    "productName": "学习通学习辅助",
+    "electronVersion": "33.4.11",
+    "electronDist": "node_modules/electron/dist",
+    "artifactName": "Setup-${version}.${ext}",
+    "beforeBuild": "before-build.js",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "shims.js",
+      "app-inject.js",
+      "config-store.js",
+      "settings.html",
+      "settings.js",
+      "shell.html",
+      "shell.js",
+      "package.json"
+    ],
+    "win": {
+      "icon": "build-resources/icon.ico",
+      "target": [
+        "dir",
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "upkea",
+      "repo": "cxmooc-autoplay"
+    }
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.11"
+  }
+}

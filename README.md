@@ -2,6 +2,8 @@
 
 超星（学习通）/ 智慧树 网课增强包：**视频自动恢复播放 + 「继续学习」提示自动点 + AI 自动答题**。
 
+> 本仓库同时包含 **油猴脚本**（`userscript/`）和 **Electron 桌面版**（`desktop/`，免装浏览器插件、带安装包）两套形态，二选一即可。
+
 > ⚠️ **仅供个人学习交流使用**，请勿用于代刷、代考等违反学校规定的用途。请遵守所在平台的服务条款，一切使用后果自负。
 
 基于 [CodFrm/cxmooc-tools](https://github.com/CodFrm/cxmooc-tools)（MIT）二次修改，主要解决三个实际痛点：
@@ -20,6 +22,10 @@ cxmooc-autoplay/
 │   ├── cxmooc-tools.user.js      # 构建好的油猴脚本，Tampermonkey 直接安装
 │   ├── SOURCE.md                 # 改了什么、怎么自己编译
 │   └── src-patches/              # 改动的源码文件
+├── desktop/                      # Electron 桌面版（免装插件、带安装包）
+│   ├── main.js / preload.js / shims.js ...
+│   ├── vendor/                   # 注入用的油猴脚本 bundle
+│   └── README.md                 # 桌面版使用说明
 ├── ahk/
 │   ├── cxmooc-autoclick.ahk      # AutoHotkey v2 脚本
 │   ├── template-continue.png     # 「继续学习」按钮模板（+ 多尺度版本）
@@ -30,6 +36,10 @@ cxmooc-autoplay/
     ├── DIFF.md                   # 与原版的逐文件差异（+572 行，未删任何原功能）
     └── TROUBLESHOOTING.md        # 排错 + 提交前检查
 ```
+
+## 桌面版（推荐不折腾的用户）
+
+不想装浏览器插件、想要一个双击就用的独立软件？直接去 [GitHub Releases](https://github.com/upkea/cxmooc-autoplay/releases) 下载 `Setup-x.x.x.exe` 安装即可——内置学习通标签页、原生设置窗口、AI 视觉读题。详见 **[desktop/README.md](desktop/README.md)**。
 
 > 想知道「跟原作者那版到底差在哪」：看 **[docs/DIFF.md](docs/DIFF.md)**（12 个文件、+572/-0 行的完整清单和原因）。
 
