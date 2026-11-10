@@ -37,15 +37,34 @@ cxmooc-autoplay/
     └── TROUBLESHOOTING.md        # 排错 + 提交前检查
 ```
 
-## 桌面版（推荐不折腾的用户）
+## 桌面版（推荐 · 免装浏览器插件）
 
-不想装浏览器插件、想要一个双击就用的独立软件？直接去 [GitHub Releases](https://github.com/upkea/cxmooc-autoplay/releases) 下载 `Setup-x.x.x.exe` 安装即可——内置学习通标签页、原生设置窗口、AI 视觉读题。详见 **[desktop/README.md](desktop/README.md)**。
+不想折腾 Tampermonkey，想要一个**双击就用的独立软件**？桌面版是 Electron 应用，把学习通网页套成独立窗口，并自动注入脚本。
+
+**核心功能：**
+
+- 🖥️ **独立窗口 + 标签页多开**：一个应用里开多个学习通页面，UA 伪装、弹窗自动外跳
+- 🤖 **AI 视觉读题答题**：截取题目图片 → glm-4v 识图 → glm-4-plus 解题 → 联网搜索 + 多模型投票，**绕过学习通字体加密**，单选/多选/判断自动勾选、自动提交
+- ⚙️ **原生设置窗口**：服务商 / API Key / 模型 / 视觉读题开关 / 拟人化（倍速、故意答错率、随机延迟）/ 一键测试连接
+- 📌 **题图预览小窗**：实时显示「AI 看到的题目」，可拖动、加减缩放，方便核对
+- ▶️ **视频守护**：自动播放、倍速、防止暂停、看完自动切下一节
+- 🗂️ **托盘 + 自动更新**：关窗口收进托盘，打包版自动从 Releases 更新
+
+**下载安装：**
+
+1. 打开 [GitHub Releases](https://github.com/upkea/cxmooc-autoplay/releases) 下载最新 `Setup-x.x.x.exe`
+2. 双击安装；首次 SmartScreen 提示「未知发布者」→ 点 **更多信息 → 仍要运行**
+3. 打开后手机号/扫码登录学习通 → 进课程页即可；托盘图标 → 设置 里填 AI Key
+
+详细说明见 **[desktop/README.md](desktop/README.md)**，源码在 [`desktop/`](desktop/)。
 
 > 想知道「跟原作者那版到底差在哪」：看 **[docs/DIFF.md](docs/DIFF.md)**（12 个文件、+572/-0 行的完整清单和原因）。
 
-## 快速开始
+## 快速开始（油猴脚本版）
 
-### 1. 安装油猴脚本（必须）
+> 用桌面版的朋友看上文「桌面版」一节即可，下面这些是油猴脚本版的步骤。
+
+### 1. 安装油猴脚本
 
 1. 浏览器装 [Tampermonkey](https://www.tampermonkey.net/)
 2. Chrome 需要额外开启（否则脚本不执行）：
