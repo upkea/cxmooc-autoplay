@@ -404,19 +404,24 @@ export class CxCourseTopic extends Topic {
                             } catch (e) {
                                 // ignore
                             }
-                            // 再等一下，看有没有二次确认
-                            self.context.setTimeout(() => {
-                                let again = self.findConfirmBtn(doc);
-                                if (again && again != confirm) {
+                            // 提交后页面会立即刷新，旧窗口的 setTimeout 会丢失，导致 resolve 永远不触发、
+                            // 后面的「切下一章」被卡死。所以这里立即 resolve；二次确认用独立定时器去点，不阻塞。
+                            try {
+                                self.context.setTimeout(() => {
                                     try {
-                                        again.click();
+                                        let again = self.findConfirmBtn(doc);
+                                        if (again && again != confirm) {
+                                            again.click();
+                                            Application.App.log.Info("点击二次确认：" + String((<any>again).innerText || ""));
+                                        }
                                     } catch (e) {
                                         // ignore
                                     }
-                                    Application.App.log.Info("点击二次确认：" + String((<any>again).innerText || ""));
-                                }
-                                resolve(undefined);
-                            }, 1500);
+                                }, 800);
+                            } catch (e) {
+                                // ignore
+                            }
+                            resolve(undefined);
                             return;
                         }
                         if (tries < 10) {
