@@ -141,6 +141,11 @@ ai_model: "glm-4-flash",                      // 模型名
 - **视频仍需页面可见**：超星会因页面失焦而暂停，AI/脚本只能"恢复"，不能"阻止"。
 - **单并发**：AI 答题是一道一道问，一次章节测验可能要等几分钟。
 
+## 更新
+
+- **桌面版**：打包版启动后自动检查 GitHub Releases 新版本，后台下载、退出时自动安装；也可手动去 [Releases](https://github.com/upkea/cxmooc-autoplay/releases) 覆盖安装。详见 [desktop/README.md](desktop/README.md) 的「更新与版本」。
+- **油猴脚本**：从 Releases 或仓库里拿到新的 `cxmooc-tools.user.js`，Tampermonkey 面板里覆盖/更新后**刷新学习通页面**即生效。
+
 ## 免责声明
 
 本项目仅供技术学习与交流，**不绕过任何付费或鉴权机制**。使用本项目产生的任何后果（包括但不限于学习成绩异常、账号处罚、违反平台服务条款）由使用者自行承担。请在符合学校和平台规定的前提下使用。

@@ -68,6 +68,25 @@ get-electron-bin.js  从 npmmirror 下载 Electron 二进制（npm 装完跑一�
 start.bat          启动入口
 ```
 
+## 更新与版本
+
+### 自动更新
+
+打包版启动后约 10 秒会自动检查 GitHub Releases 的最新版本，检测到新版本会后台静默下载，**退出应用时自动安装**（`electron-updater`，依据 `latest.yml` 判断）。当前定版 **v0.2.0**。
+
+### 手动更新
+
+去 [Releases](https://github.com/upkea/cxmooc-autoplay/releases) 下载最新 `Setup-x.x.x.exe` 覆盖安装即可，原有的 AI Key 等配置会保留。
+
+> 开发版（`start.bat` / `npm start` 直接跑源码）**不走自动更新**；要更新就 `git pull` → `node make-bundle.js` → 重启。
+
+### 版本里程碑
+
+| 版本 | 说明 |
+|---|---|
+| **v0.2.0** | 定版：桌面版并入 cxmooc-autoplay 仓库；AI 视觉读题（截图识题 + glm-4-plus 解题 + 联网搜索 + 多模型投票）；单选/多选/判断自动勾选；提交后自动切章；题图预览小窗（可缩放） |
+| **v0.1.x** | 迭代期：字体解密→视觉读图、联网搜索、可信点击勾选、翻页/切章修复、预览小窗、拟人化开关等 |
+
 ## 已知限制
 
 - Electron 环境指纹与普通浏览器有差异，学习通若加强检测需要持续跟进
