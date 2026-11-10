@@ -78,7 +78,7 @@ export function VisionConfig(): { base: string, key: string, model: string } {
 }
 
 // 截取题目：先全窗截图（原生稳定），再按元素精确裁剪（避免截错题）。
-// 注意：题目常在嵌套 iframe 里，坐标逐层累加换算到顶层视口。
+// 注意：题目常在嵌套 iframe 里，坐标逐层累加到顶层视口，再扣掉顶层窗口的滚动量。
 export function CaptureQuestionImage(el: HTMLElement): Promise<string> {
     return new Promise<string>((resolve) => {
         try {
@@ -104,68 +104,79 @@ export function CaptureQuestionImage(el: HTMLElement): Promise<string> {
                     }
                 } catch (e) { /* ignore */ }
             };
-            // 等滚动/布局彻底稳定，再量坐标
-            setTimeout(() => {
+            let attempt = 0;
+            let grab = () => {
+                attempt++;
+                // 量元素位置；没滚进视口就再滚一次重测
+                let r: any = null;
                 try {
-                    let measure = () => {
-                        let r = el.getBoundingClientRect();
-                        // 没滚到位（元素还在视口外）就再滚一次重测
-                        if (r.top < -60 || r.top > (w.innerHeight || 900)) {
-                            try { el.scrollIntoView({block: "center"}); } catch (e) { /* ignore */ }
-                        }
-                        requestAnimationFrame(() => {
-                            try {
-                                const r2 = el.getBoundingClientRect();
-                                let offX = r2.left;
-                                let offY = r2.top;
-                                let pw: any = w;
-                                let depth = 0;
-                                try {
-                                    while (pw && pw.parent && pw.parent !== pw && depth < 6) {
-                                        let fe: any = null;
-                                        try {
-                                            fe = pw.frameElement;
-                                        } catch (e) {
-                                            fe = null;
-                                        }
-                                        if (!fe) {
-                                            break;
-                                        }
-                                        const fr = fe.getBoundingClientRect();
-                                        offX += fr.left;
-                                        offY += fr.top;
-                                        pw = pw.parent;
-                                        depth++;
-                                    }
-                                } catch (e) { /* ignore */ }
-                                // getBoundingClientRect 已是视口坐标（含滚动），不再额外减 scroll
-                                const rect = {
-                                    x: Math.max(0, Math.round(offX - 10)),
-                                    y: Math.max(0, Math.round(offY - 10)),
-                                    width: Math.min(Math.max(Math.round(r2.width + 20), 420), 1400),
-                                    height: Math.min(Math.max(Math.round(r2.height + 300), 460), 1600),
-                                };
-                                w.cxCapture(rect)
-                                    .then((res: any) => {
-                                        restore();
-                                        resolve(res && res.dataUrl ? res.dataUrl : null);
-                                    })
-                                    .catch(() => {
-                                        restore();
-                                        resolve(null);
-                                    });
-                            } catch (e) {
-                                restore();
-                                resolve(null);
-                            }
-                        });
-                    };
-                    measure();
+                    r = el.getBoundingClientRect();
                 } catch (e) {
+                    r = null;
+                }
+                if (!r) {
                     restore();
                     resolve(null);
+                    return;
                 }
-            }, 450);
+                let vh = 0;
+                try {
+                    vh = w.innerHeight || 900;
+                } catch (e) {
+                    vh = 900;
+                }
+                if ((r.top < -40 || r.top > vh - 60) && attempt < 4) {
+                    try { el.scrollIntoView({block: "center"}); } catch (e) { /* ignore */ }
+                    setTimeout(grab, 350);
+                    return;
+                }
+                let offX = r.left;
+                let offY = r.top;
+                let pw: any = w;
+                let depth = 0;
+                try {
+                    while (pw && pw.parent && pw.parent !== pw && depth < 6) {
+                        let fe: any = null;
+                        try {
+                            fe = pw.frameElement;
+                        } catch (e) {
+                            fe = null;
+                        }
+                        if (!fe) {
+                            break;
+                        }
+                        const fr = fe.getBoundingClientRect();
+                        offX += fr.left;
+                        offY += fr.top;
+                        pw = pw.parent;
+                        depth++;
+                    }
+                    // 顶层窗口自身的滚动量要扣掉（frameElement 的视口坐标不含顶层滚动）
+                    offX -= pw.scrollX || 0;
+                    offY -= pw.scrollY || 0;
+                } catch (e) { /* ignore */ }
+                // 裁剪区域（顶层视口坐标）：留白保证题干和选项齐全
+                const rect = {
+                    x: Math.max(0, Math.round(offX - 10)),
+                    y: Math.max(0, Math.round(offY - 10)),
+                    width: Math.min(Math.max(Math.round(r.width + 20), 420), 1400),
+                    height: Math.min(Math.max(Math.round(r.height + 300), 460), 1600),
+                };
+                try {
+                    console.log("[CXVISION] rect=" + JSON.stringify(rect) + " elTop=" + Math.round(r.top) + " vh=" + vh + " attempt=" + attempt);
+                } catch (e) { /* ignore */ }
+                w.cxCapture(rect)
+                    .then((res: any) => {
+                        restore();
+                        resolve(res && res.dataUrl ? res.dataUrl : null);
+                    })
+                    .catch(() => {
+                        restore();
+                        resolve(null);
+                    });
+            };
+            // 等滚动/布局稳定后再量
+            setTimeout(grab, 500);
         } catch (e) {
             resolve(null);
         }
