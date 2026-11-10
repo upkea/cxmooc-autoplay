@@ -216,7 +216,17 @@ export function ReasonFromText(questionText: string, typeName: string, validLett
                             return;
                         }
                         const c = (j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || "";
-                        res(c ? { ok: true, text: String(c) } : { ok: false, error: "空回复 HTTP " + status });
+                        if (!c) {
+                            const msg = j.choices && j.choices[0] && j.choices[0].message;
+                            // 联网工具走了 tool_calls 分支（内容为空）→ 标记为工具误判，供上层重试
+                            if (msg && msg.tool_calls) {
+                                res({ ok: false, error: "空回复(tool_calls) HTTP " + status });
+                                return;
+                            }
+                            res({ ok: false, error: "空回复 HTTP " + status });
+                            return;
+                        }
+                        res({ ok: true, text: String(c) });
                     } catch (e) {
                         res({ ok: false, error: "解析失败 HTTP " + status });
                     }
@@ -292,8 +302,8 @@ export function ReasonFromText(questionText: string, typeName: string, validLett
             }
             const model = models[Math.min(idx % models.length, models.length - 1)];
             let r = await ask(model, webSearchEnabled);
-            // 模型不支持联网工具就退回普通请求
-            if (!r.ok && webSearchEnabled && /tool|web_search|search|不支持|invalid/i.test(String(r.error || ""))) {
+            // 联网工具不支持、或走了 tool_calls 分支拿不到答案 → 同模型改用普通请求重试
+            if (!r.ok && webSearchEnabled && (/tool_calls|tool|web_search|search|不支持|invalid|空回复/i.test(String(r.error || "")))) {
                 r = await ask(model, false);
             }
             if (r.ok && r.text) {

@@ -590,7 +590,17 @@ function ReasonFromText(questionText, typeName, validLetters, votes) {
                             return;
                         }
                         var c = (j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || "";
-                        res(c ? { ok: true, text: String(c) } : { ok: false, error: "空回复 HTTP " + status });
+                        if (!c) {
+                            var msg = j.choices && j.choices[0] && j.choices[0].message;
+                            // 联网工具走了 tool_calls 分支（内容为空）→ 标记为工具误判，供上层重试
+                            if (msg && msg.tool_calls) {
+                                res({ ok: false, error: "空回复(tool_calls) HTTP " + status });
+                                return;
+                            }
+                            res({ ok: false, error: "空回复 HTTP " + status });
+                            return;
+                        }
+                        res({ ok: true, text: String(c) });
                     }
                     catch (e) {
                         res({ ok: false, error: "解析失败 HTTP " + status });
@@ -683,7 +693,7 @@ function ReasonFromText(questionText, typeName, validLetters, votes) {
                         return [4 /*yield*/, ask(model, webSearchEnabled)];
                     case 1:
                         r = _a.sent();
-                        if (!(!r.ok && webSearchEnabled && /tool|web_search|search|不支持|invalid/i.test(String(r.error || "")))) return [3 /*break*/, 3];
+                        if (!(!r.ok && webSearchEnabled && (/tool_calls|tool|web_search|search|不支持|invalid|空回复/i.test(String(r.error || ""))))) return [3 /*break*/, 3];
                         return [4 /*yield*/, ask(model, false)];
                     case 2:
                         r = _a.sent();
