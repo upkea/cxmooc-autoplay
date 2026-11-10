@@ -498,6 +498,10 @@ function CaptureQuestionImage(el) {
                     if (hidden_1) {
                         hidden_1.style.visibility = "visible";
                     }
+                    // 双保险：hidden 引用失效时也直接恢复当前预览窗，避免被隐藏卡住
+                    if (previewState && previewState.box) {
+                        previewState.box.style.visibility = "visible";
+                    }
                 }
                 catch (e) { /* ignore */ }
             };
@@ -570,15 +574,21 @@ function CaptureQuestionImage(el) {
                     console.log("[CXVISION] rect=" + JSON.stringify(rect) + " elTop=" + Math.round(r.top) + " vh=" + vh + " attempt=" + attempt_1);
                 }
                 catch (e) { /* ignore */ }
-                w_1.cxCapture(rect)
-                    .then(function (res) {
-                    restore_1();
-                    resolve(res && res.dataUrl ? res.dataUrl : null);
-                })
-                    .catch(function () {
+                try {
+                    var p = w_1.cxCapture(rect);
+                    p.then(function (res) {
+                        restore_1();
+                        resolve(res && res.dataUrl ? res.dataUrl : null);
+                    }).catch(function () {
+                        restore_1();
+                        resolve(null);
+                    });
+                }
+                catch (e) {
+                    // cxCapture 同步抛错也必须恢复预览窗，否则会被隐藏卡住
                     restore_1();
                     resolve(null);
-                });
+                }
             };
             // 等滚动/布局稳定后再量
             setTimeout(grab_1, 500);

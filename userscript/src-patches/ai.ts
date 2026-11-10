@@ -102,6 +102,10 @@ export function CaptureQuestionImage(el: HTMLElement): Promise<string> {
                     if (hidden) {
                         hidden.style.visibility = "visible";
                     }
+                    // 双保险：hidden 引用失效时也直接恢复当前预览窗，避免被隐藏卡住
+                    if (previewState && previewState.box) {
+                        previewState.box.style.visibility = "visible";
+                    }
                 } catch (e) { /* ignore */ }
             };
             let attempt = 0;
@@ -165,15 +169,20 @@ export function CaptureQuestionImage(el: HTMLElement): Promise<string> {
                 try {
                     console.log("[CXVISION] rect=" + JSON.stringify(rect) + " elTop=" + Math.round(r.top) + " vh=" + vh + " attempt=" + attempt);
                 } catch (e) { /* ignore */ }
-                w.cxCapture(rect)
-                    .then((res: any) => {
+                try {
+                    let p = w.cxCapture(rect);
+                    p.then((res: any) => {
                         restore();
                         resolve(res && res.dataUrl ? res.dataUrl : null);
-                    })
-                    .catch(() => {
+                    }).catch(() => {
                         restore();
                         resolve(null);
                     });
+                } catch (e) {
+                    // cxCapture 同步抛错也必须恢复预览窗，否则会被隐藏卡住
+                    restore();
+                    resolve(null);
+                }
             };
             // 等滚动/布局稳定后再量
             setTimeout(grab, 500);
