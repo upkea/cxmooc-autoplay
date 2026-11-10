@@ -5891,6 +5891,7 @@ var cxSelectQuestion = /** @class */ (function (_super) {
         return res;
     };
     cxSelectQuestion.prototype.click = function (el, content) {
+        var _this = this;
         if (!el) {
             return;
         }
@@ -5952,6 +5953,13 @@ var cxSelectQuestion = /** @class */ (function (_super) {
             catch (e) {
                 // ignore
             }
+        }
+        // 最后补一次 CDP 真实点击（部分页面不认合成 click）
+        try {
+            setTimeout(function () { return _this.cdpClick(el); }, 120);
+        }
+        catch (e) {
+            // ignore
         }
         try {
             this.AddNotice(this.getOption(el) + ":" + content);
@@ -6123,7 +6131,48 @@ var cxJudgeQuestion = /** @class */ (function (_super) {
         }
         return txt;
     };
+    // CDP 真实点击：把元素中心点换算到顶层视口坐标，交给主进程派发可信鼠标事件
+    cxJudgeQuestion.prototype.cdpClick = function (el) {
+        try {
+            var w = window;
+            if (typeof w.cxClick !== "function" || !el) {
+                return;
+            }
+            var r = el.getBoundingClientRect();
+            if (!r || r.width < 2 || r.height < 2) {
+                return;
+            }
+            var offX = r.left;
+            var offY = r.top;
+            var pw = w;
+            var depth = 0;
+            while (pw && pw.parent && pw.parent !== pw && depth < 6) {
+                var fe = null;
+                try {
+                    fe = pw.frameElement;
+                }
+                catch (e) {
+                    fe = null;
+                }
+                if (!fe) {
+                    break;
+                }
+                var fr = fe.getBoundingClientRect();
+                offX += fr.left;
+                offY += fr.top;
+                pw = pw.parent;
+                depth++;
+            }
+            offX -= pw.scrollX || 0;
+            offY -= pw.scrollY || 0;
+            w.cxClick({ x: offX, y: offY, width: r.width, height: r.height });
+        }
+        catch (e) {
+            // ignore
+        }
+    };
     cxJudgeQuestion.prototype.click = function (el) {
+        var _this = this;
         if (!el) {
             return;
         }
@@ -6165,6 +6214,13 @@ var cxJudgeQuestion = /** @class */ (function (_super) {
         try {
             el.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, view: window }));
             el.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, cancelable: true, view: window }));
+        }
+        catch (e) {
+            // ignore
+        }
+        // 最后补一次 CDP 真实点击
+        try {
+            setTimeout(function () { return _this.cdpClick(el); }, 120);
         }
         catch (e) {
             // ignore

@@ -529,6 +529,12 @@ class cxSelectQuestion extends cxQuestion implements Question {
                 // ignore
             }
         }
+        // 最后补一次 CDP 真实点击（部分页面不认合成 click）
+        try {
+            setTimeout(() => this.cdpClick(el), 120);
+        } catch (e) {
+            // ignore
+        }
         try {
             this.AddNotice(this.getOption(el) + ":" + content);
         } catch (e) {
@@ -695,6 +701,45 @@ class cxJudgeQuestion extends cxSelectQuestion implements Question {
         return txt;
     }
 
+    // CDP 真实点击：把元素中心点换算到顶层视口坐标，交给主进程派发可信鼠标事件
+    protected cdpClick(el: HTMLElement) {
+        try {
+            let w: any = window;
+            if (typeof w.cxClick !== "function" || !el) {
+                return;
+            }
+            let r = el.getBoundingClientRect();
+            if (!r || r.width < 2 || r.height < 2) {
+                return;
+            }
+            let offX = r.left;
+            let offY = r.top;
+            let pw: any = w;
+            let depth = 0;
+            while (pw && pw.parent && pw.parent !== pw && depth < 6) {
+                let fe: any = null;
+                try {
+                    fe = pw.frameElement;
+                } catch (e) {
+                    fe = null;
+                }
+                if (!fe) {
+                    break;
+                }
+                let fr = fe.getBoundingClientRect();
+                offX += fr.left;
+                offY += fr.top;
+                pw = pw.parent;
+                depth++;
+            }
+            offX -= pw.scrollX || 0;
+            offY -= pw.scrollY || 0;
+            w.cxClick({x: offX, y: offY, width: r.width, height: r.height});
+        } catch (e) {
+            // ignore
+        }
+    }
+
     protected click(el: HTMLElement) {
         if (!el) {
             return;
@@ -734,6 +779,12 @@ class cxJudgeQuestion extends cxSelectQuestion implements Question {
         try {
             el.dispatchEvent(new MouseEvent("mousedown", {bubbles: true, cancelable: true, view: window}));
             el.dispatchEvent(new MouseEvent("mouseup", {bubbles: true, cancelable: true, view: window}));
+        } catch (e) {
+            // ignore
+        }
+        // 最后补一次 CDP 真实点击
+        try {
+            setTimeout(() => this.cdpClick(el), 120);
         } catch (e) {
             // ignore
         }
