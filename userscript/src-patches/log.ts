@@ -456,6 +456,7 @@ export class PageLog implements Logger {
 
     public Info(...args: any): Logger {
         let text = this.toStr(...args);
+        try { console.log("[CXLOG] " + text); } catch (e) { /* mirror */ }
         if (this.el) {
             this.first(text, "#409EFF", "rgba(121, 187, 255, 0.2)");
         } else {
@@ -467,6 +468,7 @@ export class PageLog implements Logger {
 
     public Warn(...args: any): Logger {
         let text = this.toStr(...args);
+        try { console.log("[CXLOG] " + text); } catch (e) { /* mirror */ }
         if (this.el) {
             this.first(text, "#5C3C00", "rgba(250, 236, 216, 0.4)");
         } else {

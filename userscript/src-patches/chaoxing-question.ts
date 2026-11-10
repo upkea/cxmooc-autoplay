@@ -345,6 +345,24 @@ abstract class cxQuestion implements Question {
                 return <any>withInput;
             }
         }
+        // 5) 终极兜底：整个文档里找 li（单题页安全，多题页取前 12 个）
+        if (ret.length == 0) {
+            try {
+                let all = this.context ? this.context.document.querySelectorAll("li") : document.querySelectorAll("li");
+                let guard = 0;
+                for (let i = 0; i < all.length && guard < 12; i++) {
+                    if (ret.indexOf(all[i]) < 0) {
+                        ret.push(all[i]);
+                        guard++;
+                    }
+                }
+            } catch (e) { /* ignore */ }
+        }
+        try {
+            if (ret.length == 0) {
+                Application.App.log.Warn("选项抓取失败：el=" + ((this.el && this.el.className) || "") + " li=" + (this.el ? this.el.querySelectorAll("li").length : -1) + " docLi=" + (this.context ? this.context.document.querySelectorAll("li").length : -1));
+            }
+        } catch (e) { /* ignore */ }
         return <any>ret;
     }
 
@@ -575,6 +593,36 @@ class cxSelectQuestion extends cxQuestion implements Question {
                         flag = true;
                     }
                 }
+                // 勾选回读校验：漏勾的重试一次（多选题尤其重要——少勾一个就 0 分）
+                setTimeout(() => {
+                    try {
+                        let missing: number[] = [];
+                        for (let k = 0; k < s.correct.length; k++) {
+                            let target = s.correct[k];
+                            if (!target) {
+                                continue;
+                            }
+                            let targetOpt = String(target.option == undefined ? "" : target.option).trim();
+                            let wantIdx = -1;
+                            if (/^[A-Ha-h]$/.test(targetOpt)) {
+                                wantIdx = targetOpt.toUpperCase().charCodeAt(0) - 65;
+                            }
+                            if (wantIdx < 0 || wantIdx >= options.length) {
+                                continue;
+                            }
+                            let inp = options[wantIdx].querySelector("input");
+                            if (inp && !(<HTMLInputElement>inp).checked) {
+                                missing.push(wantIdx);
+                            }
+                        }
+                        if (missing.length > 0) {
+                            Application.App.log.Warn("回读发现未勾选，重试：" + JSON.stringify(missing.map((x) => String.fromCharCode(65 + x))));
+                            for (let mi = 0; mi < missing.length; mi++) {
+                                this.click(options[missing[mi]], "");
+                            }
+                        }
+                    } catch (e) { /* ignore */ }
+                }, 200);
                 if (!flag) {
                     // 诊断：把「要选的」和「实际看到的选项」都打出来，方便定位
                     try {

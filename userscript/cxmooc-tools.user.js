@@ -3637,6 +3637,10 @@ var PageLog = /** @class */ (function () {
             args[_i] = arguments[_i];
         }
         var text = this.toStr.apply(this, args);
+        try {
+            console.log("[CXLOG] " + text);
+        }
+        catch (e) { /* mirror */ }
         if (this.el) {
             this.first(text, "#409EFF", "rgba(121, 187, 255, 0.2)");
         }
@@ -3652,6 +3656,10 @@ var PageLog = /** @class */ (function () {
             args[_i] = arguments[_i];
         }
         var text = this.toStr.apply(this, args);
+        try {
+            console.log("[CXLOG] " + text);
+        }
+        catch (e) { /* mirror */ }
         if (this.el) {
             this.first(text, "#5C3C00", "rgba(250, 236, 216, 0.4)");
         }
@@ -5753,6 +5761,26 @@ var cxQuestion = /** @class */ (function () {
                 return withInput;
             }
         }
+        // 5) 终极兜底：整个文档里找 li（单题页安全，多题页取前 12 个）
+        if (ret.length == 0) {
+            try {
+                var all = this.context ? this.context.document.querySelectorAll("li") : document.querySelectorAll("li");
+                var guard = 0;
+                for (var i = 0; i < all.length && guard < 12; i++) {
+                    if (ret.indexOf(all[i]) < 0) {
+                        ret.push(all[i]);
+                        guard++;
+                    }
+                }
+            }
+            catch (e) { /* ignore */ }
+        }
+        try {
+            if (ret.length == 0) {
+                Application.App.log.Warn("选项抓取失败：el=" + ((this.el && this.el.className) || "") + " li=" + (this.el ? this.el.querySelectorAll("li").length : -1) + " docLi=" + (this.context ? this.context.document.querySelectorAll("li").length : -1));
+            }
+        }
+        catch (e) { /* ignore */ }
         return ret;
     };
     cxQuestion.prototype.isCorrect = function () {
@@ -5942,8 +5970,8 @@ var cxSelectQuestion = /** @class */ (function (_super) {
         var _this = this;
         return new Promise(function (resolve) {
             try {
-                var options = _this.options();
-                if (!options || options.length == 0) {
+                var options_1 = _this.options();
+                if (!options_1 || options_1.length == 0) {
                     try {
                         _this.AddNotice("没有找到选项");
                     }
@@ -5962,8 +5990,8 @@ var cxSelectQuestion = /** @class */ (function (_super) {
                     var targetContent = String(target.content == undefined ? "" : target.content).trim();
                     var hit = -1;
                     // 1) 按选项自带的 value 匹配（A/B/C/D 或 true/false）
-                    for (var j = 0; j < options.length; j++) {
-                        var val = String(_this.getOption(options[j]) || "").trim();
+                    for (var j = 0; j < options_1.length; j++) {
+                        var val = String(_this.getOption(options_1[j]) || "").trim();
                         if (targetOpt != "" && val.toLowerCase() == targetOpt.toLowerCase()) {
                             hit = j;
                             break;
@@ -5971,8 +5999,8 @@ var cxSelectQuestion = /** @class */ (function (_super) {
                     }
                     // 2) 按选项文字匹配
                     if (hit < 0 && targetContent != "") {
-                        for (var j = 0; j < options.length; j++) {
-                            if (s.Equal(_this.getContent(options[j]), targetContent)) {
+                        for (var j = 0; j < options_1.length; j++) {
+                            if (s.Equal(_this.getContent(options_1[j]), targetContent)) {
                                 hit = j;
                                 break;
                             }
@@ -5981,21 +6009,52 @@ var cxSelectQuestion = /** @class */ (function (_super) {
                     // 3) 兜底：字母按顺序（A->第1个，D->第4个）
                     if (hit < 0 && /^[A-Ha-h]$/.test(targetOpt)) {
                         var idx = targetOpt.toUpperCase().charCodeAt(0) - 65;
-                        if (idx >= 0 && idx < options.length) {
+                        if (idx >= 0 && idx < options_1.length) {
                             hit = idx;
                         }
                     }
                     if (hit >= 0) {
-                        _this.click(options[hit], targetContent);
+                        _this.click(options_1[hit], targetContent);
                         flag = true;
                     }
                 }
+                // 勾选回读校验：漏勾的重试一次（多选题尤其重要——少勾一个就 0 分）
+                setTimeout(function () {
+                    try {
+                        var missing = [];
+                        for (var k = 0; k < s.correct.length; k++) {
+                            var target = s.correct[k];
+                            if (!target) {
+                                continue;
+                            }
+                            var targetOpt = String(target.option == undefined ? "" : target.option).trim();
+                            var wantIdx = -1;
+                            if (/^[A-Ha-h]$/.test(targetOpt)) {
+                                wantIdx = targetOpt.toUpperCase().charCodeAt(0) - 65;
+                            }
+                            if (wantIdx < 0 || wantIdx >= options_1.length) {
+                                continue;
+                            }
+                            var inp = options_1[wantIdx].querySelector("input");
+                            if (inp && !inp.checked) {
+                                missing.push(wantIdx);
+                            }
+                        }
+                        if (missing.length > 0) {
+                            Application.App.log.Warn("回读发现未勾选，重试：" + JSON.stringify(missing.map(function (x) { return String.fromCharCode(65 + x); })));
+                            for (var mi = 0; mi < missing.length; mi++) {
+                                _this.click(options_1[missing[mi]], "");
+                            }
+                        }
+                    }
+                    catch (e) { /* ignore */ }
+                }, 200);
                 if (!flag) {
                     // 诊断：把「要选的」和「实际看到的选项」都打出来，方便定位
                     try {
                         var seen = [];
-                        for (var j = 0; j < options.length; j++) {
-                            seen.push(String(_this.getOption(options[j]) || "?") + "=" + String(_this.getContent(options[j]) || "").replace(/\s+/g, " ").slice(0, 16));
+                        for (var j = 0; j < options_1.length; j++) {
+                            seen.push(String(_this.getOption(options_1[j]) || "?") + "=" + String(_this.getContent(options_1[j]) || "").replace(/\s+/g, " ").slice(0, 16));
                         }
                         var want = [];
                         for (var k = 0; k < s.correct.length; k++) {
@@ -6127,8 +6186,8 @@ var cxJudgeQuestion = /** @class */ (function (_super) {
         var _this = this;
         return new Promise(function (resolve) {
             try {
-                var options_1 = _this.options();
-                if (!options_1 || options_1.length == 0) {
+                var options_2 = _this.options();
+                if (!options_2 || options_2.length == 0) {
                     return resolve("no_match");
                 }
                 // 判断 AI（或题库）要的是「对」还是「错」
@@ -6158,16 +6217,16 @@ var cxJudgeQuestion = /** @class */ (function (_super) {
                 // 按「可见文字」匹配对/错（不用索引猜，避免隐藏元素/顺序错位）
                 var match_1 = -1;
                 var texts = [];
-                for (var j = 0; j < options_1.length; j++) {
+                for (var j = 0; j < options_2.length; j++) {
                     var t = "";
                     try {
-                        t = visibleText(options_1[j]);
+                        t = visibleText(options_2[j]);
                     }
                     catch (e) {
                         t = "";
                     }
                     if (!t) {
-                        t = String(_this.getContent(options_1[j]) || "");
+                        t = String(_this.getContent(options_2[j]) || "");
                     }
                     texts.push(t);
                     var isTrue = /对|正确|√|✓/.test(t);
@@ -6185,17 +6244,17 @@ var cxJudgeQuestion = /** @class */ (function (_super) {
                 if (match_1 < 0) {
                     match_1 = wantTrue === false ? 1 : 0;
                 }
-                if (match_1 > options_1.length - 1) {
-                    match_1 = options_1.length - 1;
+                if (match_1 > options_2.length - 1) {
+                    match_1 = options_2.length - 1;
                 }
                 Application.App.log.Info("判断题填充：要选「" + (wantTrue ? "对" : "错") + "」，点第 " + (match_1 + 1) + " 项（文字：" + String(texts[match_1] || "").slice(0, 12) + "）");
-                _this.click(options_1[match_1]);
+                _this.click(options_2[match_1]);
                 // 回读确认
                 setTimeout(function () {
                     try {
                         var picked = -1;
-                        for (var j = 0; j < options_1.length; j++) {
-                            var inp = options_1[j].querySelector("input");
+                        for (var j = 0; j < options_2.length; j++) {
+                            var inp = options_2[j].querySelector("input");
                             if (inp && inp.checked) {
                                 picked = j;
                                 break;
