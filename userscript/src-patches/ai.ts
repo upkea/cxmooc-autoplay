@@ -138,7 +138,7 @@ export function CaptureQuestionImage(el: HTMLElement): Promise<string> {
                         width: Math.min(Math.max(Math.round(r.width + 20), 420), 1400),
                         height: Math.min(Math.max(Math.round(r.height + 260), 420), 1600),
                     };
-                    w.cxCapture({rect: rect})
+                    w.cxCapture(rect)
                         .then((res: any) => {
                             restore();
                             resolve(res && res.dataUrl ? res.dataUrl : null);
@@ -211,6 +211,7 @@ export function ReasonFromText(questionText: string, typeName: string, validLett
         const allVotes: string[][] = [];
         let idx = 0;
         let usedModel = "";
+        let usedModels: string[] = [];
         let lastErr = "";
         const parseLetters = (txt: string): string[] => {
             let out: string[] = [];
@@ -333,7 +334,7 @@ export function ReasonFromText(questionText: string, typeName: string, validLett
                     }
                 }
                 let voteLog = allVotes.map((v) => v.join("")).join(",");
-                resolve({ ok: letters.length > 0, letters: letters, raw: voteLog, model: usedModel, error: letters.length > 0 ? undefined : lastErr });
+                resolve({ ok: letters.length > 0, letters: letters, raw: voteLog, model: usedModels.length > 0 ? usedModels.join("+") : usedModel, error: letters.length > 0 ? undefined : lastErr });
                 return;
             }
             const model = models[Math.min(idx % models.length, models.length - 1)];
@@ -344,6 +345,9 @@ export function ReasonFromText(questionText: string, typeName: string, validLett
             }
             if (r.ok && r.text) {
                 usedModel = model;
+                if (usedModels.indexOf(model) < 0) {
+                    usedModels.push(model);
+                }
                 let ls = parseLetters(r.text);
                 if (ls.length > 0) {
                     allVotes.push(ls);

@@ -532,7 +532,7 @@ function CaptureQuestionImage(el) {
                         width: Math.min(Math.max(Math.round(r.width + 20), 420), 1400),
                         height: Math.min(Math.max(Math.round(r.height + 260), 420), 1600),
                     };
-                    w_1.cxCapture({ rect: rect })
+                    w_1.cxCapture(rect)
                         .then(function (res) {
                         restore_1();
                         resolve(res && res.dataUrl ? res.dataUrl : null);
@@ -588,6 +588,7 @@ function ReasonFromText(questionText, typeName, validLetters, votes) {
         var allVotes = [];
         var idx = 0;
         var usedModel = "";
+        var usedModels = [];
         var lastErr = "";
         var parseLetters = function (txt) {
             var out = [];
@@ -725,7 +726,7 @@ function ReasonFromText(questionText, typeName, validLetters, votes) {
                                 }
                             }
                             voteLog = allVotes.map(function (v) { return v.join(""); }).join(",");
-                            resolve({ ok: letters.length > 0, letters: letters, raw: voteLog, model: usedModel, error: letters.length > 0 ? undefined : lastErr });
+                            resolve({ ok: letters.length > 0, letters: letters, raw: voteLog, model: usedModels.length > 0 ? usedModels.join("+") : usedModel, error: letters.length > 0 ? undefined : lastErr });
                             return [2 /*return*/];
                         }
                         model = models[Math.min(idx % models.length, models.length - 1)];
@@ -740,6 +741,9 @@ function ReasonFromText(questionText, typeName, validLetters, votes) {
                     case 3:
                         if (r.ok && r.text) {
                             usedModel = model;
+                            if (usedModels.indexOf(model) < 0) {
+                                usedModels.push(model);
+                            }
                             ls = parseLetters(r.text);
                             if (ls.length > 0) {
                                 allVotes.push(ls);
