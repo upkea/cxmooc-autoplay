@@ -111,22 +111,27 @@ export class CxCourse extends EventListener<MoocEvent> implements MoocTaskSet {
         return null;
     }
 
-    // 找"下一节/下一章"入口：新版学习通导航结构变了，这里按多种方式兜底
+    // 找"下一节/下一章"入口：新版学习通导航结构变了，这里按多种方式兜底。
+    // 新版页面的真按钮是可见的 div.prev_next.next（onclick=PCount.next(...)），
+    // 另有两个隐藏的 nextChapter 锚点，必须排除掉。
     protected findNextControl(): HTMLElement {
         let sels = [
-            "span.currents ~ span",
             ".prev_next.next",
             ".next_prev.next",
             "a.next",
             "button.next",
             ".nav-next",
             "[class*=nextSection]",
+            "span.currents ~ span",
         ];
         for (let i = 0; i < sels.length; i++) {
             try {
-                let el = <HTMLElement>document.querySelector(sels[i]);
-                if (el && el.offsetParent != null) {
-                    return el;
+                let els = document.querySelectorAll(sels[i]);
+                for (let j = 0; j < els.length; j++) {
+                    let el = <HTMLElement>els[j];
+                    if (el && el.offsetParent != null && this.isReallyVisible(el)) {
+                        return el;
+                    }
                 }
             } catch (e) {
                 // ignore
@@ -134,11 +139,11 @@ export class CxCourse extends EventListener<MoocEvent> implements MoocTaskSet {
         }
         // 按可见文字找
         try {
-            let nodes = document.querySelectorAll("span,a,button,div");
+            let nodes = document.querySelectorAll("span,a,button,div,li");
             for (let i = 0; i < nodes.length; i++) {
                 let el = <HTMLElement>nodes[i];
                 let t = (el.innerText || el.textContent || "").trim();
-                if (/^(下一节|下一章|下一任务点|下一题|下一步|下一页)$/.test(t) && el.offsetParent != null) {
+                if (/^(下一节|下一章|下一任务点|下一题|下一步|下一页)$/.test(t) && el.offsetParent != null && this.isReallyVisible(el)) {
                     return el;
                 }
             }
@@ -146,6 +151,37 @@ export class CxCourse extends EventListener<MoocEvent> implements MoocTaskSet {
             // ignore
         }
         return null;
+    }
+
+    protected isReallyVisible(el: HTMLElement): boolean {
+        try {
+            let r = el.getBoundingClientRect();
+            return r.width > 4 && r.height > 4;
+        } catch (e) {
+            return false;
+        }
+    }
+
+    // 调用页面自带的导航函数 PCount.next（真按钮的 onclick 就是它）
+    protected callPCountNext(el: HTMLElement): boolean {
+        try {
+            let oc = String((el.getAttribute && el.getAttribute("onclick")) || "");
+            if (!/PCount\s*\.\s*next\s*\(/.test(oc)) {
+                return false;
+            }
+            let P = (<any>window).PCount;
+            if (!P || typeof P.next != "function") {
+                return false;
+            }
+            // 直接用 onclick 里的参数调用（比解析字符串更稳，参数里可能有引号嵌套）
+            let fn = new Function(oc);
+            fn.call(window);
+            Application.App.log.Info("已调用页面导航函数 PCount.next");
+            return true;
+        } catch (e) {
+            Application.App.log.Warn("调用 PCount.next 失败：" + e);
+            return false;
+        }
     }
 
     protected nextPage(num: number) {
@@ -158,12 +194,31 @@ export class CxCourse extends EventListener<MoocEvent> implements MoocTaskSet {
         let el = this.findNextControl();
         if (el) {
             Application.App.log.Info("切换到下一节（" + (((el as any).innerText || el.tagName) + "").slice(0, 20) + "）");
+            // 1) 优先直接调用页面自带的 PCount.next（最可靠，不依赖坐标/事件）
+            let done = this.callPCountNext(el);
+            if (done) {
+                return;
+            }
+            // 2) 可信真实鼠标点击（CDP 派发，学习通只认真实事件）
+            try {
+                let ck = (<any>window).cxClickEl;
+                if (typeof ck == "function") {
+                    let pr = ck(el);
+                    if (pr && pr.catch) {
+                        pr.catch(() => { /* ignore */ });
+                    }
+                    return;
+                }
+            } catch (e) {
+                // ignore
+            }
+            // 3) 合成点击兜底
             try {
                 el.click();
-                return;
             } catch (e) {
                 Application.App.log.Warn("点击下一节失败：" + e);
             }
+            return;
         }
         //只往后执行（旧版目录）
         el = this.afterPage();

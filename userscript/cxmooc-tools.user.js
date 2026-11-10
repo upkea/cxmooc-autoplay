@@ -4643,22 +4643,27 @@ var CxCourse = /** @class */ (function (_super) {
         }
         return null;
     };
-    // 找"下一节/下一章"入口：新版学习通导航结构变了，这里按多种方式兜底
+    // 找"下一节/下一章"入口：新版学习通导航结构变了，这里按多种方式兜底。
+    // 新版页面的真按钮是可见的 div.prev_next.next（onclick=PCount.next(...)），
+    // 另有两个隐藏的 nextChapter 锚点，必须排除掉。
     CxCourse.prototype.findNextControl = function () {
         var sels = [
-            "span.currents ~ span",
             ".prev_next.next",
             ".next_prev.next",
             "a.next",
             "button.next",
             ".nav-next",
             "[class*=nextSection]",
+            "span.currents ~ span",
         ];
         for (var i = 0; i < sels.length; i++) {
             try {
-                var el = document.querySelector(sels[i]);
-                if (el && el.offsetParent != null) {
-                    return el;
+                var els = document.querySelectorAll(sels[i]);
+                for (var j = 0; j < els.length; j++) {
+                    var el = els[j];
+                    if (el && el.offsetParent != null && this.isReallyVisible(el)) {
+                        return el;
+                    }
                 }
             }
             catch (e) {
@@ -4667,11 +4672,11 @@ var CxCourse = /** @class */ (function (_super) {
         }
         // 按可见文字找
         try {
-            var nodes = document.querySelectorAll("span,a,button,div");
+            var nodes = document.querySelectorAll("span,a,button,div,li");
             for (var i = 0; i < nodes.length; i++) {
                 var el = nodes[i];
                 var t = (el.innerText || el.textContent || "").trim();
-                if (/^(下一节|下一章|下一任务点|下一题|下一步|下一页)$/.test(t) && el.offsetParent != null) {
+                if (/^(下一节|下一章|下一任务点|下一题|下一步|下一页)$/.test(t) && el.offsetParent != null && this.isReallyVisible(el)) {
                     return el;
                 }
             }
@@ -4680,6 +4685,37 @@ var CxCourse = /** @class */ (function (_super) {
             // ignore
         }
         return null;
+    };
+    CxCourse.prototype.isReallyVisible = function (el) {
+        try {
+            var r = el.getBoundingClientRect();
+            return r.width > 4 && r.height > 4;
+        }
+        catch (e) {
+            return false;
+        }
+    };
+    // 调用页面自带的导航函数 PCount.next（真按钮的 onclick 就是它）
+    CxCourse.prototype.callPCountNext = function (el) {
+        try {
+            var oc = String((el.getAttribute && el.getAttribute("onclick")) || "");
+            if (!/PCount\s*\.\s*next\s*\(/.test(oc)) {
+                return false;
+            }
+            var P = window.PCount;
+            if (!P || typeof P.next != "function") {
+                return false;
+            }
+            // 直接用 onclick 里的参数调用（比解析字符串更稳，参数里可能有引号嵌套）
+            var fn = new Function(oc);
+            fn.call(window);
+            application_1.Application.App.log.Info("已调用页面导航函数 PCount.next");
+            return true;
+        }
+        catch (e) {
+            application_1.Application.App.log.Warn("调用 PCount.next 失败：" + e);
+            return false;
+        }
     };
     CxCourse.prototype.nextPage = function (num) {
         var _this = this;
@@ -4692,13 +4728,33 @@ var CxCourse = /** @class */ (function (_super) {
         var el = this.findNextControl();
         if (el) {
             application_1.Application.App.log.Info("切换到下一节（" + ((el.innerText || el.tagName) + "").slice(0, 20) + "）");
+            // 1) 优先直接调用页面自带的 PCount.next（最可靠，不依赖坐标/事件）
+            var done = this.callPCountNext(el);
+            if (done) {
+                return;
+            }
+            // 2) 可信真实鼠标点击（CDP 派发，学习通只认真实事件）
+            try {
+                var ck = window.cxClickEl;
+                if (typeof ck == "function") {
+                    var pr = ck(el);
+                    if (pr && pr.catch) {
+                        pr.catch(function () { });
+                    }
+                    return;
+                }
+            }
+            catch (e) {
+                // ignore
+            }
+            // 3) 合成点击兜底
             try {
                 el.click();
-                return;
             }
             catch (e) {
                 application_1.Application.App.log.Warn("点击下一节失败：" + e);
             }
+            return;
         }
         //只往后执行（旧版目录）
         el = this.afterPage();
