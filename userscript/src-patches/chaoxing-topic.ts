@@ -44,6 +44,28 @@ export class CxTopicControlBar extends CxTaskControlBar {
             try {
                 await (<TopicAdapter>this.task).ManualSubmit();
                 submit.innerText = "已提交";
+                // 手动提交完成后，立即切到下一个任务点（跳过挂机间隔等待）
+                setTimeout(() => {
+                    try {
+                        let w: any = window;
+                        let fn: any = null;
+                        for (let i = 0; i < 6; i++) {
+                            if (w && typeof w.__cxAdvanceNow == "function") {
+                                fn = w.__cxAdvanceNow;
+                                break;
+                            }
+                            if (!w || w === w.parent) {
+                                break;
+                            }
+                            w = w.parent;
+                        }
+                        if (fn) {
+                            fn();
+                        }
+                    } catch (e) {
+                        // ignore
+                    }
+                }, 1200);
             } catch (e) {
                 submit.innerText = "提交失败 重试";
                 Application.App.log.Warn("手动提交失败：" + ((e && e.message) ? e.message : e));

@@ -1728,7 +1728,7 @@ var ToolsQuestionBankFacade = /** @class */ (function () {
                         status = "success";
                         interval = application_1.Application.App.config.topic_interval * 1000;
                         _loop_1 = function (i) {
-                            var q, type_1, options, title, parts, k, ret, el, img, typeName, validLetters_1, oi, lo, parseLetters, votes, usedModel, votesWanted, vv, letters, visionRaw, bestLog, ocrText, ocrModel, ocr, rr, e_1, vr2, e_2, r2, r3, voted, e_3, rate, wrong, correct, wantTrue, mapped, k, text, isTrue, isFalse, idx, answer, directOk, qel, qdoc, qwin, opts, wantIdx, di, opt, cv, wi, idx2, li, okCnt, wi, idx2, li, aria, tmp, _a, e3_1, e_4;
+                            var q, type_1, options, title, parts, k, ret, el, img, typeName, validLetters_1, oi, lo, parseLetters, votes, usedModel, votesWanted, vv, letters, visionRaw, bestLog, ocrText, ocrModel, ocr, rr, e_1, vr2, e_2, r2, r3, voted, e_3, rate, wrong, correct, wantTrue, mapped, k, text, isTrue, isFalse, idx, answer, directOk, qel_1, qdoc_1, qwin, opts_1, wantIdx, di, opt, idx, cv, wi, idx2, li, savedWant_1, savedOpts_1, savedQwin, check, tmp, _a, e3_1, e_4;
                             return __generator(this, function (_b) {
                                 switch (_b.label) {
                                     case 0:
@@ -1997,32 +1997,53 @@ var ToolsQuestionBankFacade = /** @class */ (function () {
                                         };
                                         directOk = false;
                                         try {
-                                            qel = q.GetElement ? q.GetElement() : null;
-                                            if (qel && qel.ownerDocument) {
-                                                qdoc = qel.ownerDocument;
-                                                qwin = qdoc.defaultView || window;
-                                                opts = qel.querySelectorAll ? qel.querySelectorAll(".Zy_ulTop li, .Zy_ulTk li, .Py_tk li, ul li") : null;
-                                                if (!opts || opts.length == 0) {
-                                                    opts = qdoc.querySelectorAll(".Zy_ulTop li, .Py_tk li");
+                                            qel_1 = q.GetElement ? q.GetElement() : null;
+                                            if (qel_1 && qel_1.ownerDocument) {
+                                                qdoc_1 = qel_1.ownerDocument;
+                                                qwin = qdoc_1.defaultView || window;
+                                                opts_1 = qel_1.querySelectorAll ? qel_1.querySelectorAll(".Zy_ulTop li, .Zy_ulTk li, .Py_tk li, ul li") : null;
+                                                if (!opts_1 || opts_1.length == 0) {
+                                                    opts_1 = qdoc_1.querySelectorAll(".Zy_ulTop li, .Py_tk li");
                                                 }
                                                 wantIdx = [];
                                                 for (di = 0; di < correct.length; di++) {
-                                                    opt = String(correct[di].option == undefined ? "" : correct[di].option).trim();
-                                                    if (/^[A-Ha-h]$/.test(opt)) {
-                                                        wantIdx.push(opt.toUpperCase().charCodeAt(0) - 65);
+                                                    opt = String(correct[di].option == undefined ? "" : correct[di].option).trim().toUpperCase();
+                                                    if (!/^[A-H]$/.test(opt)) {
+                                                        continue;
+                                                    }
+                                                    idx = void 0;
+                                                    if (type_1 == 3) {
+                                                        // 判断题：学习通用「A=对」「F=错」，个别课程用「B=错」
+                                                        if (opt == "A" || opt == "T") {
+                                                            idx = 0;
+                                                        }
+                                                        else if (opt == "F" || opt == "B") {
+                                                            idx = 1;
+                                                        }
+                                                        else {
+                                                            idx = opt.charCodeAt(0) - 65;
+                                                        }
+                                                    }
+                                                    else {
+                                                        idx = opt.charCodeAt(0) - 65;
+                                                    }
+                                                    if (idx >= 0 && wantIdx.indexOf(idx) < 0) {
+                                                        wantIdx.push(idx);
                                                     }
                                                 }
                                                 if (wantIdx.length == 0 && type_1 == 3 && correct.length > 0) {
                                                     cv = correct[0].option;
                                                     wantIdx.push((cv === true || String(cv) == "true") ? 0 : 1);
                                                 }
-                                                if (opts && opts.length > 0 && wantIdx.length > 0) {
+                                                // 去掉越界项
+                                                wantIdx = wantIdx.filter(function (x) { return x >= 0 && x < opts_1.length; });
+                                                if (opts_1 && opts_1.length > 0 && wantIdx.length > 0) {
                                                     for (wi = 0; wi < wantIdx.length; wi++) {
                                                         idx2 = wantIdx[wi];
-                                                        if (idx2 < 0 || idx2 >= opts.length) {
+                                                        if (idx2 < 0 || idx2 >= opts_1.length) {
                                                             continue;
                                                         }
-                                                        li = opts[idx2];
+                                                        li = opts_1[idx2];
                                                         try {
                                                             if (typeof qwin.addChoice == "function") {
                                                                 qwin.addChoice(li);
@@ -2036,20 +2057,52 @@ var ToolsQuestionBankFacade = /** @class */ (function () {
                                                             application_1.Application.App.log.Warn("直填失败：" + String((de && de.message) || de));
                                                         }
                                                     }
-                                                    okCnt = 0;
-                                                    for (wi = 0; wi < wantIdx.length; wi++) {
-                                                        idx2 = wantIdx[wi];
-                                                        if (idx2 < 0 || idx2 >= opts.length) {
-                                                            continue;
+                                                    savedWant_1 = wantIdx.slice();
+                                                    savedOpts_1 = opts_1;
+                                                    savedQwin = qwin;
+                                                    check = function () {
+                                                        var okCnt = 0;
+                                                        for (var wi = 0; wi < savedWant_1.length; wi++) {
+                                                            var idx2 = savedWant_1[wi];
+                                                            if (idx2 < 0 || idx2 >= savedOpts_1.length) {
+                                                                continue;
+                                                            }
+                                                            var li = savedOpts_1[idx2];
+                                                            var aria = li.getAttribute ? String(li.getAttribute("aria-checked")) : "";
+                                                            var cls = String(li.className || "");
+                                                            if (aria == "true" || cls.indexOf("after") >= 0 || cls.indexOf("checked") >= 0) {
+                                                                okCnt++;
+                                                            }
+                                                            else if (type_1 == 2) {
+                                                                // 多选：补充一次可信真实点击（addChoice 对 checkbox 可能只改 aria 不改勾选）
+                                                                try {
+                                                                    var ck = window.cxClickEl;
+                                                                    if (typeof ck == "function") {
+                                                                        var pr = ck(li);
+                                                                        if (pr && pr.catch) {
+                                                                            pr.catch(function () { });
+                                                                        }
+                                                                    }
+                                                                }
+                                                                catch (e) { /* ignore */ }
+                                                            }
                                                         }
-                                                        li = opts[idx2];
-                                                        aria = li.getAttribute ? String(li.getAttribute("aria-checked")) : "";
-                                                        if (aria == "true" || String(li.className || "").indexOf("after") >= 0) {
-                                                            okCnt++;
+                                                        var hidVal = "";
+                                                        try {
+                                                            var hid = qel_1 && qel_1.querySelector ? qel_1.querySelector("input[type=hidden][id^=answer]") : null;
+                                                            if (!hid) {
+                                                                hid = qdoc_1.querySelector("input[type=hidden][id^=answer]");
+                                                            }
+                                                            if (hid) {
+                                                                hidVal = String(hid.value || "");
+                                                            }
                                                         }
-                                                    }
-                                                    application_1.Application.App.log.Info("直填校验：" + okCnt + "/" + wantIdx.length + " 选中");
-                                                    directOk = okCnt >= Math.max(1, Math.ceil(wantIdx.length / 2));
+                                                        catch (e) { /* ignore */ }
+                                                        application_1.Application.App.log.Info("直填校验：" + okCnt + "/" + savedWant_1.length + " 选中" + (hidVal ? "，隐藏答案=" + hidVal : "") + "（题型 " + type_1 + "）");
+                                                    };
+                                                    setTimeout(check, type_1 == 2 ? 500 : 60);
+                                                    // 已执行点击，先按成功处理；补点由上面的校验异步完成
+                                                    directOk = true;
                                                 }
                                             }
                                         }
@@ -7223,6 +7276,29 @@ var CxTopicControlBar = /** @class */ (function (_super) {
                     case 2:
                         _a.sent();
                         submit.innerText = "已提交";
+                        // 手动提交完成后，立即切到下一个任务点（跳过挂机间隔等待）
+                        setTimeout(function () {
+                            try {
+                                var w = window;
+                                var fn = null;
+                                for (var i = 0; i < 6; i++) {
+                                    if (w && typeof w.__cxAdvanceNow == "function") {
+                                        fn = w.__cxAdvanceNow;
+                                        break;
+                                    }
+                                    if (!w || w === w.parent) {
+                                        break;
+                                    }
+                                    w = w.parent;
+                                }
+                                if (fn) {
+                                    fn();
+                                }
+                            }
+                            catch (e) {
+                                // ignore
+                            }
+                        }, 1200);
                         return [3 /*break*/, 4];
                     case 3:
                         e_1 = _a.sent();
@@ -8241,6 +8317,12 @@ var mooc = /** @class */ (function () {
     };
     mooc.prototype.runMoocTask = function (moocTask) {
         var _this = this;
+        this.moocTask = moocTask;
+        // 暴露给 iframe 里的「手动提交」按钮调用：手动提交完成后立即切到下一任务点
+        var self = this;
+        window.__cxAdvanceNow = function () {
+            self.advanceNow();
+        };
         moocTask.addEventListener("reload", function () {
             if (application_1.Application.App.config.auto) {
                 _this.runTask(moocTask);
@@ -8276,6 +8358,20 @@ var mooc = /** @class */ (function () {
             application_1.Application.App.log.Fatal(msg);
             alert(msg);
         });
+    };
+    // 立即切换到下一个任务点（手动提交后调用，跳过 interval 等待）
+    mooc.prototype.advanceNow = function () {
+        try {
+            clearTimeout(this.timer);
+        }
+        catch (e) {
+            // ignore
+        }
+        if (!this.moocTask) {
+            return;
+        }
+        application_1.Application.App.log.Info("手动提交完成，立即切换下一个任务点");
+        this.runTask(this.moocTask);
     };
     mooc.prototype.runTask = function (moocTask) {
         return __awaiter(this, void 0, void 0, function () {

@@ -705,15 +705,33 @@ export class ToolsQuestionBankFacade implements QuestionBankFacade {
                         }
                         let wantIdx: number[] = [];
                         for (let di = 0; di < correct.length; di++) {
-                            let opt = String(correct[di].option == undefined ? "" : correct[di].option).trim();
-                            if (/^[A-Ha-h]$/.test(opt)) {
-                                wantIdx.push(opt.toUpperCase().charCodeAt(0) - 65);
+                            let opt = String(correct[di].option == undefined ? "" : correct[di].option).trim().toUpperCase();
+                            if (!/^[A-H]$/.test(opt)) {
+                                continue;
+                            }
+                            let idx: number;
+                            if (type == 3) {
+                                // 判断题：学习通用「A=对」「F=错」，个别课程用「B=错」
+                                if (opt == "A" || opt == "T") {
+                                    idx = 0;
+                                } else if (opt == "F" || opt == "B") {
+                                    idx = 1;
+                                } else {
+                                    idx = opt.charCodeAt(0) - 65;
+                                }
+                            } else {
+                                idx = opt.charCodeAt(0) - 65;
+                            }
+                            if (idx >= 0 && wantIdx.indexOf(idx) < 0) {
+                                wantIdx.push(idx);
                             }
                         }
                         if (wantIdx.length == 0 && type == 3 && correct.length > 0) {
                             let cv = correct[0].option;
                             wantIdx.push((cv === true || String(cv) == "true") ? 0 : 1);
                         }
+                        // 去掉越界项
+                        wantIdx = wantIdx.filter((x) => x >= 0 && x < opts.length);
                         if (opts && opts.length > 0 && wantIdx.length > 0) {
                             for (let wi = 0; wi < wantIdx.length; wi++) {
                                 let idx2 = wantIdx[wi];
@@ -732,20 +750,50 @@ export class ToolsQuestionBankFacade implements QuestionBankFacade {
                                     Application.App.log.Warn("直填失败：" + String((de && de.message) || de));
                                 }
                             }
-                            let okCnt = 0;
-                            for (let wi = 0; wi < wantIdx.length; wi++) {
-                                let idx2 = wantIdx[wi];
-                                if (idx2 < 0 || idx2 >= opts.length) {
-                                    continue;
+                            // 校验：多选可信点击是异步的，稍等再读
+                            let savedWant = wantIdx.slice();
+                            let savedOpts = opts;
+                            let savedQwin = qwin;
+                            let check = () => {
+                                let okCnt = 0;
+                                for (let wi = 0; wi < savedWant.length; wi++) {
+                                    let idx2 = savedWant[wi];
+                                    if (idx2 < 0 || idx2 >= savedOpts.length) {
+                                        continue;
+                                    }
+                                    let li: any = savedOpts[idx2];
+                                    let aria = li.getAttribute ? String(li.getAttribute("aria-checked")) : "";
+                                    let cls = String(li.className || "");
+                                    if (aria == "true" || cls.indexOf("after") >= 0 || cls.indexOf("checked") >= 0) {
+                                        okCnt++;
+                                    } else if (type == 2) {
+                                        // 多选：补充一次可信真实点击（addChoice 对 checkbox 可能只改 aria 不改勾选）
+                                        try {
+                                            let ck = (<any>window).cxClickEl;
+                                            if (typeof ck == "function") {
+                                                let pr = ck(li);
+                                                if (pr && pr.catch) {
+                                                    pr.catch(() => {});
+                                                }
+                                            }
+                                        } catch (e) { /* ignore */ }
+                                    }
                                 }
-                                let li: any = opts[idx2];
-                                let aria = li.getAttribute ? String(li.getAttribute("aria-checked")) : "";
-                                if (aria == "true" || String(li.className || "").indexOf("after") >= 0) {
-                                    okCnt++;
-                                }
-                            }
-                            Application.App.log.Info("直填校验：" + okCnt + "/" + wantIdx.length + " 选中");
-                            directOk = okCnt >= Math.max(1, Math.ceil(wantIdx.length / 2));
+                                let hidVal = "";
+                                try {
+                                    let hid = qel && qel.querySelector ? qel.querySelector("input[type=hidden][id^=answer]") : null;
+                                    if (!hid) {
+                                        hid = qdoc.querySelector("input[type=hidden][id^=answer]");
+                                    }
+                                    if (hid) {
+                                        hidVal = String((<any>hid).value || "");
+                                    }
+                                } catch (e) { /* ignore */ }
+                                Application.App.log.Info("直填校验：" + okCnt + "/" + savedWant.length + " 选中" + (hidVal ? "，隐藏答案=" + hidVal : "") + "（题型 " + type + "）");
+                            };
+                            setTimeout(check, type == 2 ? 500 : 60);
+                            // 已执行点击，先按成功处理；补点由上面的校验异步完成
+                            directOk = true;
                         }
                     }
                 } catch (de) {
