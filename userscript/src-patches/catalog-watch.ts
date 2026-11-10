@@ -207,6 +207,18 @@ export function StartCatalogWatch() {
                 cooldownUntil = now + 15000;
                 // 给课程翻页逻辑一个"我刚导航过"的标记，避免两边同时点造成跳两节
                 (<any>window).__cxNavByCatalog = now;
+                // 真实鼠标点击（学习通目录项只认可信点击）
+                try {
+                    let ck = (<any>window).cxClickEl;
+                    if (typeof ck == "function") {
+                        let pr = ck(it.el);
+                        if (pr && pr.catch) {
+                            pr.catch(() => { /* ignore */ });
+                        }
+                    }
+                } catch (e) {
+                    // ignore
+                }
                 try {
                     it.el.click();
                 } catch (e) {
