@@ -77,7 +77,8 @@ export function VisionConfig(): { base: string, key: string, model: string } {
     };
 }
 
-// 截取题目（整页可视区截图，彻底绕开 iframe 坐标换算问题；截图时隐藏预览小窗）
+// 截取题目：先全窗截图（原生稳定），再按元素精确裁剪（避免截错题）。
+// 注意：题目常在嵌套 iframe 里，坐标逐层累加换算到顶层视口。
 export function CaptureQuestionImage(el: HTMLElement): Promise<string> {
     return new Promise<string>((resolve) => {
         try {
@@ -89,7 +90,6 @@ export function CaptureQuestionImage(el: HTMLElement): Promise<string> {
             try {
                 el.scrollIntoView({block: "center"});
             } catch (e) { /* ignore */ }
-            // 隐藏预览小窗（在截图文档内，避免遮挡题目）
             let hidden: HTMLElement = null;
             try {
                 if (previewState && previewState.box) {
@@ -105,16 +105,53 @@ export function CaptureQuestionImage(el: HTMLElement): Promise<string> {
                 } catch (e) { /* ignore */ }
             };
             setTimeout(() => {
-                w.cxCapture({full: true})
-                    .then((res: any) => {
-                        restore();
-                        resolve(res && res.dataUrl ? res.dataUrl : null);
-                    })
-                    .catch(() => {
-                        restore();
-                        resolve(null);
-                    });
-            }, 250);
+                try {
+                    const r = el.getBoundingClientRect();
+                    let offX = r.left;
+                    let offY = r.top;
+                    let pw: any = w;
+                    let depth = 0;
+                    try {
+                        while (pw && pw.parent && pw.parent !== pw && depth < 6) {
+                            let fe: any = null;
+                            try {
+                                fe = pw.frameElement;
+                            } catch (e) {
+                                fe = null;
+                            }
+                            if (!fe) {
+                                break;
+                            }
+                            const fr = fe.getBoundingClientRect();
+                            offX += fr.left;
+                            offY += fr.top;
+                            pw = pw.parent;
+                            depth++;
+                        }
+                        offX -= pw.scrollX || 0;
+                        offY -= pw.scrollY || 0;
+                    } catch (e) { /* ignore */ }
+                    // 裁剪区域（视口坐标）：留白保证选项齐全
+                    const rect = {
+                        x: Math.max(0, Math.round(offX - 10)),
+                        y: Math.max(0, Math.round(offY - 10)),
+                        width: Math.min(Math.max(Math.round(r.width + 20), 420), 1400),
+                        height: Math.min(Math.max(Math.round(r.height + 260), 420), 1600),
+                    };
+                    w.cxCapture({rect: rect})
+                        .then((res: any) => {
+                            restore();
+                            resolve(res && res.dataUrl ? res.dataUrl : null);
+                        })
+                        .catch(() => {
+                            restore();
+                            resolve(null);
+                        });
+                } catch (e) {
+                    restore();
+                    resolve(null);
+                }
+            }, 300);
         } catch (e) {
             resolve(null);
         }
@@ -141,8 +178,7 @@ export interface ReasonResult {
 export function VisionOCR(imageDataUrl: string): Promise<{ ok: boolean; text?: string; error?: string; model?: string }> {
     return AskAIVision(
         imageDataUrl,
-        "这是一张学习通章节测验的页面截图，题目和选项位于截图中部（页面顶部/侧边是其他界面元素，请忽略）。" +
-        "请把当前这道题目及其所有选项的完整文字逐字转录出来（包括题型标题、题干、A/B/C/D 选项内容）。" +
+        "图片是一道题目的截图。请把这道题目（题型标题、题干）和它的所有 A/B/C/D 选项文字逐字转录出来。" +
         "只输出转录的文字，不要作答，不要解释。"
     );
 }
