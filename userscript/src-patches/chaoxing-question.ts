@@ -677,28 +677,58 @@ class cxJudgeQuestion extends cxSelectQuestion implements Question {
                         }
                     }
                 }
+                if (wantTrue === null) {
+                    Application.App.log.Warn("判断题填充：无法判断对/错，放弃");
+                    return resolve("no_match");
+                }
+                // 按「可见文字」匹配对/错（不用索引猜，避免隐藏元素/顺序错位）
                 let match = -1;
+                let texts: string[] = [];
                 for (let j = 0; j < options.length; j++) {
-                    let val = String(this.getOption(options[j]) || "").toLowerCase();
-                    let content = this.getContent(options[j]) || "";
-                    let isTrue = val == "true" || val == "1" || /对|正确|√/.test(content);
-                    let isFalse = val == "false" || val == "0" || /错|错误|×/.test(content);
-                    if (wantTrue === true && isTrue) {
+                    let t = "";
+                    try {
+                        t = visibleText(options[j]);
+                    } catch (e) {
+                        t = "";
+                    }
+                    if (!t) {
+                        t = String(this.getContent(options[j]) || "");
+                    }
+                    texts.push(t);
+                    let isTrue = /对|正确|√|✓/.test(t);
+                    let isFalse = /错|错误|×|✗/.test(t);
+                    if (wantTrue === true && isTrue && !isFalse) {
                         match = j;
                         break;
                     }
-                    if (wantTrue === false && isFalse) {
+                    if (wantTrue === false && isFalse && !isTrue) {
                         match = j;
                         break;
                     }
                 }
+                // 文字匹配失败再退回索引（判断题通常 A=对 B=错）
                 if (match < 0) {
                     match = wantTrue === false ? 1 : 0;
                 }
                 if (match > options.length - 1) {
                     match = options.length - 1;
                 }
+                Application.App.log.Info("判断题填充：要选「" + (wantTrue ? "对" : "错") + "」，点第 " + (match + 1) + " 项（文字：" + String(texts[match] || "").slice(0, 12) + "）");
                 this.click(options[match]);
+                // 回读确认
+                setTimeout(() => {
+                    try {
+                        let picked = -1;
+                        for (let j = 0; j < options.length; j++) {
+                            let inp = options[j].querySelector("input");
+                            if (inp && (<HTMLInputElement>inp).checked) {
+                                picked = j;
+                                break;
+                            }
+                        }
+                        Application.App.log.Info("判断题填充结果：实际选中第 " + (picked + 1) + " 项" + (picked == match ? "（一致）" : "（不一致！）"));
+                    } catch (e) { /* ignore */ }
+                }, 150);
                 return resolve("ok");
             } catch (e) {
                 return resolve("no_match");

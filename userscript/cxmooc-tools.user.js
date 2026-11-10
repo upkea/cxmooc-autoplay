@@ -6070,8 +6070,8 @@ var cxJudgeQuestion = /** @class */ (function (_super) {
         var _this = this;
         return new Promise(function (resolve) {
             try {
-                var options = _this.options();
-                if (!options || options.length == 0) {
+                var options_1 = _this.options();
+                if (!options_1 || options_1.length == 0) {
                     return resolve("no_match");
                 }
                 // 判断 AI（或题库）要的是「对」还是「错」
@@ -6094,28 +6094,60 @@ var cxJudgeQuestion = /** @class */ (function (_super) {
                         }
                     }
                 }
-                var match = -1;
-                for (var j = 0; j < options.length; j++) {
-                    var val = String(_this.getOption(options[j]) || "").toLowerCase();
-                    var content = _this.getContent(options[j]) || "";
-                    var isTrue = val == "true" || val == "1" || /对|正确|√/.test(content);
-                    var isFalse = val == "false" || val == "0" || /错|错误|×/.test(content);
-                    if (wantTrue === true && isTrue) {
-                        match = j;
+                if (wantTrue === null) {
+                    Application.App.log.Warn("判断题填充：无法判断对/错，放弃");
+                    return resolve("no_match");
+                }
+                // 按「可见文字」匹配对/错（不用索引猜，避免隐藏元素/顺序错位）
+                var match_1 = -1;
+                var texts = [];
+                for (var j = 0; j < options_1.length; j++) {
+                    var t = "";
+                    try {
+                        t = visibleText(options_1[j]);
+                    }
+                    catch (e) {
+                        t = "";
+                    }
+                    if (!t) {
+                        t = String(_this.getContent(options_1[j]) || "");
+                    }
+                    texts.push(t);
+                    var isTrue = /对|正确|√|✓/.test(t);
+                    var isFalse = /错|错误|×|✗/.test(t);
+                    if (wantTrue === true && isTrue && !isFalse) {
+                        match_1 = j;
                         break;
                     }
-                    if (wantTrue === false && isFalse) {
-                        match = j;
+                    if (wantTrue === false && isFalse && !isTrue) {
+                        match_1 = j;
                         break;
                     }
                 }
-                if (match < 0) {
-                    match = wantTrue === false ? 1 : 0;
+                // 文字匹配失败再退回索引（判断题通常 A=对 B=错）
+                if (match_1 < 0) {
+                    match_1 = wantTrue === false ? 1 : 0;
                 }
-                if (match > options.length - 1) {
-                    match = options.length - 1;
+                if (match_1 > options_1.length - 1) {
+                    match_1 = options_1.length - 1;
                 }
-                _this.click(options[match]);
+                Application.App.log.Info("判断题填充：要选「" + (wantTrue ? "对" : "错") + "」，点第 " + (match_1 + 1) + " 项（文字：" + String(texts[match_1] || "").slice(0, 12) + "）");
+                _this.click(options_1[match_1]);
+                // 回读确认
+                setTimeout(function () {
+                    try {
+                        var picked = -1;
+                        for (var j = 0; j < options_1.length; j++) {
+                            var inp = options_1[j].querySelector("input");
+                            if (inp && inp.checked) {
+                                picked = j;
+                                break;
+                            }
+                        }
+                        Application.App.log.Info("判断题填充结果：实际选中第 " + (picked + 1) + " 项" + (picked == match_1 ? "（一致）" : "（不一致！）"));
+                    }
+                    catch (e) { /* ignore */ }
+                }, 150);
                 return resolve("ok");
             }
             catch (e) {
