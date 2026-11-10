@@ -1728,14 +1728,14 @@ var ToolsQuestionBankFacade = /** @class */ (function () {
                         status = "success";
                         interval = application_1.Application.App.config.topic_interval * 1000;
                         _loop_1 = function (i) {
-                            var q, type_1, options, title, parts, k, ret, el, img, typeName, validLetters_1, oi, lo, parseLetters, votes, usedModel, votesWanted, vv, letters, visionRaw, bestLog, ocrText, ocrModel, ocr, rr, e_1, vr2, e_2, r2, r3, voted, e_3, rate, wrong, correct, wantTrue, mapped, k, text, isTrue, isFalse, idx, answer, tmp, e3_1, e_4;
-                            return __generator(this, function (_a) {
-                                switch (_a.label) {
+                            var q, type_1, options, title, parts, k, ret, el, img, typeName, validLetters_1, oi, lo, parseLetters, votes, usedModel, votesWanted, vv, letters, visionRaw, bestLog, ocrText, ocrModel, ocr, rr, e_1, vr2, e_2, r2, r3, voted, e_3, rate, wrong, correct, wantTrue, mapped, k, text, isTrue, isFalse, idx, answer, directOk, qel, qdoc, qwin, opts, wantIdx, di, opt, cv, wi, idx2, li, okCnt, wi, idx2, li, aria, tmp, _a, e3_1, e_4;
+                            return __generator(this, function (_b) {
+                                switch (_b.label) {
                                     case 0:
                                         q = list[i];
-                                        _a.label = 1;
+                                        _b.label = 1;
                                     case 1:
-                                        _a.trys.push([1, 32, , 33]);
+                                        _b.trys.push([1, 34, , 35]);
                                         type_1 = q.GetType();
                                         options = [];
                                         try {
@@ -1780,9 +1780,9 @@ var ToolsQuestionBankFacade = /** @class */ (function () {
                                         }
                                         ret = null;
                                         if (!ai_1.VisionEnabled()) return [3 /*break*/, 15];
-                                        _a.label = 2;
+                                        _b.label = 2;
                                     case 2:
-                                        _a.trys.push([2, 14, , 15]);
+                                        _b.trys.push([2, 14, , 15]);
                                         el = null;
                                         try {
                                             el = q.GetElement ? q.GetElement() : null;
@@ -1793,7 +1793,7 @@ var ToolsQuestionBankFacade = /** @class */ (function () {
                                         if (!el) return [3 /*break*/, 13];
                                         return [4 /*yield*/, ai_1.CaptureQuestionImage(el)];
                                     case 3:
-                                        img = _a.sent();
+                                        img = _b.sent();
                                         if (!img) return [3 /*break*/, 13];
                                         ai_1.ShowVisionPreview(img, "读题中…");
                                         typeName = type_1 == 1 ? "单选题" : (type_1 == 2 ? "多选题" : (type_1 == 3 ? "判断题" : "填空题"));
@@ -1845,12 +1845,12 @@ var ToolsQuestionBankFacade = /** @class */ (function () {
                                         bestLog = "";
                                         ocrText = "";
                                         ocrModel = "";
-                                        _a.label = 4;
+                                        _b.label = 4;
                                     case 4:
-                                        _a.trys.push([4, 9, , 10]);
+                                        _b.trys.push([4, 9, , 10]);
                                         return [4 /*yield*/, ai_1.VisionOCR(img)];
                                     case 5:
-                                        ocr = _a.sent();
+                                        ocr = _b.sent();
                                         if (!(ocr.ok && ocr.text && String(ocr.text).trim().length >= 8)) return [3 /*break*/, 7];
                                         ocrText = String(ocr.text).trim();
                                         ocrModel = ocr.model || "";
@@ -1858,7 +1858,7 @@ var ToolsQuestionBankFacade = /** @class */ (function () {
                                         ai_1.ShowVisionPreview(img, "转录完成，文本模型解题中…");
                                         return [4 /*yield*/, ai_1.ReasonFromText(ocrText, typeName, validLetters_1, votesWanted)];
                                     case 6:
-                                        rr = _a.sent();
+                                        rr = _b.sent();
                                         if (rr.ok && rr.letters.length > 0) {
                                             letters = rr.letters;
                                             bestLog = (rr.raw || letters.join("")) + " => " + letters.join("") + "（" + (rr.model || "") + "）";
@@ -1871,22 +1871,22 @@ var ToolsQuestionBankFacade = /** @class */ (function () {
                                         if (ocr.error) {
                                             application_1.Application.App.log.Warn("视觉转录失败：" + ocr.error);
                                         }
-                                        _a.label = 8;
+                                        _b.label = 8;
                                     case 8: return [3 /*break*/, 10];
                                     case 9:
-                                        e_1 = _a.sent();
+                                        e_1 = _b.sent();
                                         return [3 /*break*/, 10];
                                     case 10:
                                         if (!(letters.length == 0)) return [3 /*break*/, 12];
                                         return [4 /*yield*/, ai_1.AskAIVision(img, "看图回答：" + typeName + "，只输出正确选项的字母（" + validLetters_1.join("/") + "），不要任何解释。")];
                                     case 11:
-                                        vr2 = _a.sent();
+                                        vr2 = _b.sent();
                                         if (vr2.ok && vr2.text) {
                                             visionRaw = String(vr2.text);
                                             letters = parseLetters(visionRaw);
                                             usedModel = vr2.model || usedModel;
                                         }
-                                        _a.label = 12;
+                                        _b.label = 12;
                                     case 12:
                                         if (letters.length > 0) {
                                             application_1.Application.App.log.Info("视觉读题答案：" + letters.join("") + "（投票 " + (bestLog || letters.join("")) + "）");
@@ -1902,38 +1902,38 @@ var ToolsQuestionBankFacade = /** @class */ (function () {
                                         else {
                                             application_1.Application.App.log.Warn("视觉读题未给出有效选项（" + String(visionRaw || "").replace(/\s+/g, " ").slice(0, 40) + "）回退文字模式");
                                         }
-                                        _a.label = 13;
+                                        _b.label = 13;
                                     case 13: return [3 /*break*/, 15];
                                     case 14:
-                                        e_2 = _a.sent();
+                                        e_2 = _b.sent();
                                         return [3 /*break*/, 15];
                                     case 15:
                                         if (!(!ret || !ret.ok)) return [3 /*break*/, 17];
                                         return [4 /*yield*/, ai_1.AskAI(title, type_1, options)];
                                     case 16:
-                                        ret = _a.sent();
-                                        _a.label = 17;
+                                        ret = _b.sent();
+                                        _b.label = 17;
                                     case 17:
                                         if (!(!ret.vision && (type_1 == 1 || type_1 == 2 || type_1 == 3) && ret.ok)) return [3 /*break*/, 24];
-                                        _a.label = 18;
+                                        _b.label = 18;
                                     case 18:
-                                        _a.trys.push([18, 23, , 24]);
+                                        _b.trys.push([18, 23, , 24]);
                                         return [4 /*yield*/, ai_1.AskAI(title, type_1, options)];
                                     case 19:
-                                        r2 = _a.sent();
+                                        r2 = _b.sent();
                                         if (!this_1.sameAIResult(ret, r2)) return [3 /*break*/, 20];
                                         application_1.Application.App.log.Info("AI 复核一致");
                                         return [3 /*break*/, 22];
                                     case 20: return [4 /*yield*/, ai_1.AskAI(title, type_1, options)];
                                     case 21:
-                                        r3 = _a.sent();
+                                        r3 = _b.sent();
                                         voted = this_1.voteAIResults([ret, r2, r3]);
                                         application_1.Application.App.log.Info("AI 两次不一致，三次投票 -> " + this_1.aiVoteKey(voted));
                                         ret = voted;
-                                        _a.label = 22;
+                                        _b.label = 22;
                                     case 22: return [3 /*break*/, 24];
                                     case 23:
-                                        e_3 = _a.sent();
+                                        e_3 = _b.sent();
                                         return [3 /*break*/, 24];
                                     case 24:
                                         // 拟人化：故意答错率（wrong_rate，百分比，默认 0 = 永远答对；只对单选/判断生效）
@@ -1958,8 +1958,8 @@ var ToolsQuestionBankFacade = /** @class */ (function () {
                                         if (!(i < list.length - 1)) return [3 /*break*/, 26];
                                         return [4 /*yield*/, this_1.aiSleep(interval)];
                                     case 25:
-                                        _a.sent();
-                                        _a.label = 26;
+                                        _b.sent();
+                                        _b.label = 26;
                                     case 26: return [2 /*return*/, "continue"];
                                     case 27:
                                         application_1.Application.App.log.Info("AI 回答：" + String(ret.raw || "").replace(/\s+/g, " ").slice(0, 60));
@@ -1995,21 +1995,88 @@ var ToolsQuestionBankFacade = /** @class */ (function () {
                                             correct: correct,
                                             Equal: function (content1, content2) { return utils_1.removeHTML(content1) == utils_1.removeHTML(content2); },
                                         };
+                                        directOk = false;
+                                        try {
+                                            qel = q.GetElement ? q.GetElement() : null;
+                                            if (qel && qel.ownerDocument) {
+                                                qdoc = qel.ownerDocument;
+                                                qwin = qdoc.defaultView || window;
+                                                opts = qel.querySelectorAll ? qel.querySelectorAll(".Zy_ulTop li, .Zy_ulTk li, .Py_tk li, ul li") : null;
+                                                if (!opts || opts.length == 0) {
+                                                    opts = qdoc.querySelectorAll(".Zy_ulTop li, .Py_tk li");
+                                                }
+                                                wantIdx = [];
+                                                for (di = 0; di < correct.length; di++) {
+                                                    opt = String(correct[di].option == undefined ? "" : correct[di].option).trim();
+                                                    if (/^[A-Ha-h]$/.test(opt)) {
+                                                        wantIdx.push(opt.toUpperCase().charCodeAt(0) - 65);
+                                                    }
+                                                }
+                                                if (wantIdx.length == 0 && type_1 == 3 && correct.length > 0) {
+                                                    cv = correct[0].option;
+                                                    wantIdx.push((cv === true || String(cv) == "true") ? 0 : 1);
+                                                }
+                                                if (opts && opts.length > 0 && wantIdx.length > 0) {
+                                                    for (wi = 0; wi < wantIdx.length; wi++) {
+                                                        idx2 = wantIdx[wi];
+                                                        if (idx2 < 0 || idx2 >= opts.length) {
+                                                            continue;
+                                                        }
+                                                        li = opts[idx2];
+                                                        try {
+                                                            if (typeof qwin.addChoice == "function") {
+                                                                qwin.addChoice(li);
+                                                            }
+                                                            else {
+                                                                li.click();
+                                                            }
+                                                            application_1.Application.App.log.Info("直填 " + String.fromCharCode(65 + idx2) + " → aria=" + String(li.getAttribute ? li.getAttribute("aria-checked") : "?"));
+                                                        }
+                                                        catch (de) {
+                                                            application_1.Application.App.log.Warn("直填失败：" + String((de && de.message) || de));
+                                                        }
+                                                    }
+                                                    okCnt = 0;
+                                                    for (wi = 0; wi < wantIdx.length; wi++) {
+                                                        idx2 = wantIdx[wi];
+                                                        if (idx2 < 0 || idx2 >= opts.length) {
+                                                            continue;
+                                                        }
+                                                        li = opts[idx2];
+                                                        aria = li.getAttribute ? String(li.getAttribute("aria-checked")) : "";
+                                                        if (aria == "true" || String(li.className || "").indexOf("after") >= 0) {
+                                                            okCnt++;
+                                                        }
+                                                    }
+                                                    application_1.Application.App.log.Info("直填校验：" + okCnt + "/" + wantIdx.length + " 选中");
+                                                    directOk = okCnt >= Math.max(1, Math.ceil(wantIdx.length / 2));
+                                                }
+                                            }
+                                        }
+                                        catch (de) {
+                                            // ignore
+                                        }
                                         application_1.Application.App.log.Info("准备勾选：" + JSON.stringify(correct.map(function (v) { return v.option; })));
                                         tmp = void 0;
-                                        _a.label = 28;
+                                        _b.label = 28;
                                     case 28:
-                                        _a.trys.push([28, 30, , 31]);
-                                        return [4 /*yield*/, q.Fill(answer)];
-                                    case 29:
-                                        tmp = _a.sent();
+                                        _b.trys.push([28, 32, , 33]);
+                                        if (!directOk) return [3 /*break*/, 29];
+                                        _a = "ok";
                                         return [3 /*break*/, 31];
+                                    case 29: return [4 /*yield*/, q.Fill(answer)];
                                     case 30:
-                                        e3_1 = _a.sent();
+                                        _a = _b.sent();
+                                        _b.label = 31;
+                                    case 31:
+                                        tmp = _a;
+                                        return [3 /*break*/, 33];
+                                    case 32:
+                                        e3_1 = _b.sent();
                                         application_1.Application.App.log.Warn("勾选答案失败：" + this_1.errText(e3_1));
                                         tmp = "no_match";
-                                        return [3 /*break*/, 31];
-                                    case 31:
+                                        return [3 /*break*/, 33];
+                                    case 33:
                                         if (tmp == "ok") {
                                             q.SetStatus("ok");
                                             application_1.Application.App.log.Info("AI 答案已填写：" + JSON.stringify(correct.map(function (v) { return v.option; })));
@@ -2017,9 +2084,9 @@ var ToolsQuestionBankFacade = /** @class */ (function () {
                                         else {
                                             status = this_1.randAnswer(status, tmp, q);
                                         }
-                                        return [3 /*break*/, 33];
-                                    case 32:
-                                        e_4 = _a.sent();
+                                        return [3 /*break*/, 35];
+                                    case 34:
+                                        e_4 = _b.sent();
                                         application_1.Application.App.log.Warn("AI 答题异常（第 " + (i + 1) + " 题）：" + this_1.errText(e_4));
                                         try {
                                             status = this_1.randAnswer(status, "no_answer", q);
@@ -2027,14 +2094,14 @@ var ToolsQuestionBankFacade = /** @class */ (function () {
                                         catch (e2) {
                                             status = "incomplete";
                                         }
-                                        return [3 /*break*/, 33];
-                                    case 33:
-                                        if (!(i < list.length - 1)) return [3 /*break*/, 35];
+                                        return [3 /*break*/, 35];
+                                    case 35:
+                                        if (!(i < list.length - 1)) return [3 /*break*/, 37];
                                         return [4 /*yield*/, this_1.aiSleep(interval)];
-                                    case 34:
-                                        _a.sent();
-                                        _a.label = 35;
-                                    case 35: return [2 /*return*/];
+                                    case 36:
+                                        _b.sent();
+                                        _b.label = 37;
+                                    case 37: return [2 /*return*/];
                                 }
                             });
                         };
@@ -5776,11 +5843,21 @@ var cxQuestion = /** @class */ (function () {
             catch (e) { /* ignore */ }
         }
         try {
-            if (ret.length == 0) {
-                Application.App.log.Warn("选项抓取失败：el=" + ((this.el && this.el.className) || "") + " li=" + (this.el ? this.el.querySelectorAll("li").length : -1) + " docLi=" + (this.context ? this.context.document.querySelectorAll("li").length : -1));
-            }
+            // 诊断：输出题目元素真实结构（一次性，便于定位选项容器）
+            Application.App.log.Warn("选项诊断: el=" + ((this.el && this.el.tagName) || "?") + "." + ((this.el && String(this.el.className)) || "").slice(0, 40) +
+                " li=" + (this.el ? this.el.querySelectorAll("li").length : -1) +
+                " ul=" + (this.el ? this.el.querySelectorAll("ul").length : -1) +
+                " input=" + (this.el ? this.el.querySelectorAll("input").length : -1) +
+                " 抓到=" + ret.length +
+                " | html=" + String((this.el && this.el.innerHTML) || "").replace(/\s+/g, " ").slice(0, 260));
         }
         catch (e) { /* ignore */ }
+        if (ret.length == 0) {
+            try {
+                Application.App.log.Warn("选项抓取失败：el=" + ((this.el && this.el.className) || "") + " li=" + (this.el ? this.el.querySelectorAll("li").length : -1) + " docLi=" + (this.context ? this.context.document.querySelectorAll("li").length : -1));
+            }
+            catch (e) { /* ignore */ }
+        }
         return ret;
     };
     cxQuestion.prototype.isCorrect = function () {

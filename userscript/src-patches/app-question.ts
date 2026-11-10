@@ -692,10 +692,69 @@ export class ToolsQuestionBankFacade implements QuestionBankFacade {
                     Equal: (content1: string, content2: string) => removeHTML(content1) == removeHTML(content2),
                 };
 
+                // 直接用页面原生选择函数勾选（学习通新版选项是 li[onclick=addChoice]）
+                let directOk = false;
+                try {
+                    let qel: any = (q as any).GetElement ? (q as any).GetElement() : null;
+                    if (qel && qel.ownerDocument) {
+                        let qdoc: any = qel.ownerDocument;
+                        let qwin: any = qdoc.defaultView || window;
+                        let opts: any = qel.querySelectorAll ? qel.querySelectorAll(".Zy_ulTop li, .Zy_ulTk li, .Py_tk li, ul li") : null;
+                        if (!opts || opts.length == 0) {
+                            opts = qdoc.querySelectorAll(".Zy_ulTop li, .Py_tk li");
+                        }
+                        let wantIdx: number[] = [];
+                        for (let di = 0; di < correct.length; di++) {
+                            let opt = String(correct[di].option == undefined ? "" : correct[di].option).trim();
+                            if (/^[A-Ha-h]$/.test(opt)) {
+                                wantIdx.push(opt.toUpperCase().charCodeAt(0) - 65);
+                            }
+                        }
+                        if (wantIdx.length == 0 && type == 3 && correct.length > 0) {
+                            let cv = correct[0].option;
+                            wantIdx.push((cv === true || String(cv) == "true") ? 0 : 1);
+                        }
+                        if (opts && opts.length > 0 && wantIdx.length > 0) {
+                            for (let wi = 0; wi < wantIdx.length; wi++) {
+                                let idx2 = wantIdx[wi];
+                                if (idx2 < 0 || idx2 >= opts.length) {
+                                    continue;
+                                }
+                                let li: any = opts[idx2];
+                                try {
+                                    if (typeof qwin.addChoice == "function") {
+                                        qwin.addChoice(li);
+                                    } else {
+                                        li.click();
+                                    }
+                                    Application.App.log.Info("直填 " + String.fromCharCode(65 + idx2) + " → aria=" + String(li.getAttribute ? li.getAttribute("aria-checked") : "?"));
+                                } catch (de) {
+                                    Application.App.log.Warn("直填失败：" + String((de && de.message) || de));
+                                }
+                            }
+                            let okCnt = 0;
+                            for (let wi = 0; wi < wantIdx.length; wi++) {
+                                let idx2 = wantIdx[wi];
+                                if (idx2 < 0 || idx2 >= opts.length) {
+                                    continue;
+                                }
+                                let li: any = opts[idx2];
+                                let aria = li.getAttribute ? String(li.getAttribute("aria-checked")) : "";
+                                if (aria == "true" || String(li.className || "").indexOf("after") >= 0) {
+                                    okCnt++;
+                                }
+                            }
+                            Application.App.log.Info("直填校验：" + okCnt + "/" + wantIdx.length + " 选中");
+                            directOk = okCnt >= Math.max(1, Math.ceil(wantIdx.length / 2));
+                        }
+                    }
+                } catch (de) {
+                    // ignore
+                }
                 Application.App.log.Info("准备勾选：" + JSON.stringify(correct.map(v => v.option)));
                 let tmp: any;
                 try {
-                    tmp = await q.Fill(answer);
+                    tmp = directOk ? "ok" : await q.Fill(answer);
                 } catch (e3) {
                     Application.App.log.Warn("勾选答案失败：" + this.errText(e3));
                     tmp = "no_match";

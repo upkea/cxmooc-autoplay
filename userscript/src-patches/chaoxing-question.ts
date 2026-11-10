@@ -359,10 +359,19 @@ abstract class cxQuestion implements Question {
             } catch (e) { /* ignore */ }
         }
         try {
-            if (ret.length == 0) {
-                Application.App.log.Warn("选项抓取失败：el=" + ((this.el && this.el.className) || "") + " li=" + (this.el ? this.el.querySelectorAll("li").length : -1) + " docLi=" + (this.context ? this.context.document.querySelectorAll("li").length : -1));
-            }
+            // 诊断：输出题目元素真实结构（一次性，便于定位选项容器）
+            Application.App.log.Warn("选项诊断: el=" + ((this.el && this.el.tagName) || "?") + "." + ((this.el && String(this.el.className)) || "").slice(0, 40) +
+                " li=" + (this.el ? this.el.querySelectorAll("li").length : -1) +
+                " ul=" + (this.el ? this.el.querySelectorAll("ul").length : -1) +
+                " input=" + (this.el ? this.el.querySelectorAll("input").length : -1) +
+                " 抓到=" + ret.length +
+                " | html=" + String((this.el && this.el.innerHTML) || "").replace(/\s+/g, " ").slice(0, 260));
         } catch (e) { /* ignore */ }
+        if (ret.length == 0) {
+            try {
+                Application.App.log.Warn("选项抓取失败：el=" + ((this.el && this.el.className) || "") + " li=" + (this.el ? this.el.querySelectorAll("li").length : -1) + " docLi=" + (this.context ? this.context.document.querySelectorAll("li").length : -1));
+            } catch (e) { /* ignore */ }
+        }
         return <any>ret;
     }
 
