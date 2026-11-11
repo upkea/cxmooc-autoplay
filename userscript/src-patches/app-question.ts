@@ -733,47 +733,72 @@ export class ToolsQuestionBankFacade implements QuestionBankFacade {
                         // 去掉越界项
                         wantIdx = wantIdx.filter((x) => x >= 0 && x < opts.length);
                         if (opts && opts.length > 0 && wantIdx.length > 0) {
+                            // 诊断：确认 qwin.addChoice 到底是「选选项」还是「论坛加话题」
+                            try {
+                                Application.App.log.Info("addChoice 诊断：" + typeof qwin.addChoice + " | " + String(qwin.addChoice || "").replace(/\s+/g, " ").slice(0, 70));
+                            } catch (e) { /* ignore */ }
+                            // 隐藏答案字段（提交时页面读的是它）
+                            let hidEl: any = null;
+                            try {
+                                hidEl = qel && qel.querySelector ? qel.querySelector("input[type=hidden][id^=answer]") : null;
+                                if (!hidEl && qdoc) {
+                                    hidEl = qdoc.querySelector("input[type=hidden][id^=answer]");
+                                }
+                            } catch (e) { /* ignore */ }
+                            let hidBefore = hidEl ? String(hidEl.value || "") : "";
+                            let pick = (li: any): boolean => {
+                                if (String(li.getAttribute ? li.getAttribute("aria-checked") : "") == "true") {
+                                    return true;
+                                }
+                                // 1) 直接调页面函数（单选/判断有效；多选可能 Illegal invocation）
+                                try {
+                                    if (typeof qwin.addChoice == "function") {
+                                        qwin.addChoice(li);
+                                    }
+                                } catch (e) { /* ignore */ }
+                                if (String(li.getAttribute ? li.getAttribute("aria-checked") : "") == "true") {
+                                    return true;
+                                }
+                                // 2) 直接触发内联 onclick（addChoice(this)）
+                                try {
+                                    if (typeof li.onclick == "function") {
+                                        li.onclick.call(li, {target: li, currentTarget: li});
+                                    }
+                                } catch (e) { /* ignore */ }
+                                if (String(li.getAttribute ? li.getAttribute("aria-checked") : "") == "true") {
+                                    return true;
+                                }
+                                // 3) 合成点击
+                                try {
+                                    li.click();
+                                } catch (e) { /* ignore */ }
+                                if (String(li.getAttribute ? li.getAttribute("aria-checked") : "") == "true") {
+                                    return true;
+                                }
+                                // 4) 可信真实点击（异步，先发出去）
+                                try {
+                                    let ck = (<any>window).cxClickEl;
+                                    if (typeof ck == "function") {
+                                        let pr = ck(li);
+                                        if (pr && pr.catch) {
+                                            pr.catch(() => {});
+                                        }
+                                    }
+                                } catch (e) { /* ignore */ }
+                                return false;
+                            };
                             for (let wi = 0; wi < wantIdx.length; wi++) {
                                 let idx2 = wantIdx[wi];
                                 if (idx2 < 0 || idx2 >= opts.length) {
                                     continue;
                                 }
                                 let li: any = opts[idx2];
-                                let done = false;
-                                // 多选题：addChoice 对 checkbox 常抛 Illegal invocation，优先用可信真实点击
-                                if (type == 2) {
-                                    try {
-                                        let ck = (<any>window).cxClickEl;
-                                        if (typeof ck == "function") {
-                                            let pr = ck(li);
-                                            if (pr && pr.catch) {
-                                                pr.catch(() => {});
-                                            }
-                                            done = true;
-                                        }
-                                    } catch (e) { /* ignore */ }
-                                }
-                                if (!done) {
-                                    try {
-                                        if (typeof qwin.addChoice == "function") {
-                                            qwin.addChoice(li);
-                                        } else {
-                                            li.click();
-                                        }
-                                        done = true;
-                                    } catch (de) {
-                                        Application.App.log.Warn("直填失败：" + String((de && de.message) || de));
-                                        try {
-                                            li.click();
-                                        } catch (e2) { /* ignore */ }
-                                    }
-                                }
-                                Application.App.log.Info("直填 " + String.fromCharCode(65 + idx2) + " → aria=" + String(li.getAttribute ? li.getAttribute("aria-checked") : "?"));
+                                let ok = pick(li);
+                                Application.App.log.Info("直填 " + String.fromCharCode(65 + idx2) + " → " + (ok ? "已选中" : "待异步确认") + " aria=" + String(li.getAttribute ? li.getAttribute("aria-checked") : "?"));
                             }
-                            // 校验：多选可信点击是异步的，稍等再读
+                            // 校验：只看 aria（别再被 "before-after" 里的 after 骗了）
                             let savedWant = wantIdx.slice();
                             let savedOpts = opts;
-                            let savedQwin = qwin;
                             let check = () => {
                                 let okCnt = 0;
                                 for (let wi = 0; wi < savedWant.length; wi++) {
@@ -783,11 +808,10 @@ export class ToolsQuestionBankFacade implements QuestionBankFacade {
                                     }
                                     let li: any = savedOpts[idx2];
                                     let aria = li.getAttribute ? String(li.getAttribute("aria-checked")) : "";
-                                    let cls = String(li.className || "");
-                                    if (aria == "true" || cls.indexOf("after") >= 0 || cls.indexOf("checked") >= 0) {
+                                    if (aria == "true") {
                                         okCnt++;
                                     } else if (type == 2) {
-                                        // 多选：补充一次可信真实点击（addChoice 对 checkbox 可能只改 aria 不改勾选）
+                                        // 多选补点：可信真实点击
                                         try {
                                             let ck = (<any>window).cxClickEl;
                                             if (typeof ck == "function") {
@@ -801,18 +825,16 @@ export class ToolsQuestionBankFacade implements QuestionBankFacade {
                                 }
                                 let hidVal = "";
                                 try {
-                                    let hid = qel && qel.querySelector ? qel.querySelector("input[type=hidden][id^=answer]") : null;
-                                    if (!hid) {
-                                        hid = qdoc.querySelector("input[type=hidden][id^=answer]");
-                                    }
-                                    if (hid) {
-                                        hidVal = String((<any>hid).value || "");
+                                    if (hidEl) {
+                                        hidVal = String(hidEl.value || "");
                                     }
                                 } catch (e) { /* ignore */ }
-                                Application.App.log.Info("直填校验：" + okCnt + "/" + savedWant.length + " 选中" + (hidVal ? "，隐藏答案=" + hidVal : "") + "（题型 " + type + "）");
+                                Application.App.log.Info("直填校验：" + okCnt + "/" + savedWant.length + " 选中，隐藏答案=" + JSON.stringify(hidVal) + "（题型 " + type + "）");
+                                if (savedWant.length > 0 && !hidVal && hidBefore) {
+                                    Application.App.log.Warn("多选隐藏答案被清空（之前是 " + JSON.stringify(hidBefore) + "）");
+                                }
                             };
-                            setTimeout(check, type == 2 ? 500 : 60);
-                            // 已执行点击，先按成功处理；补点由上面的校验异步完成
+                            setTimeout(check, type == 2 ? 700 : 60);
                             directOk = true;
                         }
                     }

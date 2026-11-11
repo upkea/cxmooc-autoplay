@@ -1773,7 +1773,7 @@ var ToolsQuestionBankFacade = /** @class */ (function () {
                         status = "success";
                         interval = application_1.Application.App.config.topic_interval * 1000;
                         _loop_1 = function (i) {
-                            var q, type_1, options, title, parts, k, ret, el, img, typeName, validLetters_1, oi, lo, parseLetters, votes, usedModel, votesWanted, vv, letters, visionRaw, bestLog, ocrText, ocrModel, ocr, rr, e_1, vr2, e_2, r2, r3, voted, e_3, rate, wrong, correct, wantTrue, mapped, k, text, isTrue, isFalse, idx, answer, directOk, qel_1, qdoc_1, qwin, opts_1, wantIdx, di, opt, idx, cv, wi, idx2, li, done, ck, pr, savedWant_1, savedOpts_1, savedQwin, check, tmp, _a, e3_1, e_4;
+                            var q, type_1, options, title, parts, k, ret, el, img, typeName, validLetters_1, oi, lo, parseLetters, votes, usedModel, votesWanted, vv, letters, visionRaw, bestLog, ocrText, ocrModel, ocr, rr, e_1, vr2, e_2, r2, r3, voted, e_3, rate, wrong, correct, wantTrue, mapped, k, text, isTrue, isFalse, idx, answer, directOk, qel, qdoc, qwin_1, opts_1, wantIdx, di, opt, idx, cv, hidEl_1, hidBefore_1, pick, wi, idx2, li, ok, savedWant_1, savedOpts_1, check, tmp, _a, e3_1, e_4;
                             return __generator(this, function (_b) {
                                 switch (_b.label) {
                                     case 0:
@@ -2042,13 +2042,13 @@ var ToolsQuestionBankFacade = /** @class */ (function () {
                                         };
                                         directOk = false;
                                         try {
-                                            qel_1 = q.GetElement ? q.GetElement() : null;
-                                            if (qel_1 && qel_1.ownerDocument) {
-                                                qdoc_1 = qel_1.ownerDocument;
-                                                qwin = qdoc_1.defaultView || window;
-                                                opts_1 = qel_1.querySelectorAll ? qel_1.querySelectorAll(".Zy_ulTop li, .Zy_ulTk li, .Py_tk li, ul li") : null;
+                                            qel = q.GetElement ? q.GetElement() : null;
+                                            if (qel && qel.ownerDocument) {
+                                                qdoc = qel.ownerDocument;
+                                                qwin_1 = qdoc.defaultView || window;
+                                                opts_1 = qel.querySelectorAll ? qel.querySelectorAll(".Zy_ulTop li, .Zy_ulTk li, .Py_tk li, ul li") : null;
                                                 if (!opts_1 || opts_1.length == 0) {
-                                                    opts_1 = qdoc_1.querySelectorAll(".Zy_ulTop li, .Py_tk li");
+                                                    opts_1 = qdoc.querySelectorAll(".Zy_ulTop li, .Py_tk li");
                                                 }
                                                 wantIdx = [];
                                                 for (di = 0; di < correct.length; di++) {
@@ -2083,50 +2083,76 @@ var ToolsQuestionBankFacade = /** @class */ (function () {
                                                 // 去掉越界项
                                                 wantIdx = wantIdx.filter(function (x) { return x >= 0 && x < opts_1.length; });
                                                 if (opts_1 && opts_1.length > 0 && wantIdx.length > 0) {
+                                                    // 诊断：确认 qwin.addChoice 到底是「选选项」还是「论坛加话题」
+                                                    try {
+                                                        application_1.Application.App.log.Info("addChoice 诊断：" + typeof qwin_1.addChoice + " | " + String(qwin_1.addChoice || "").replace(/\s+/g, " ").slice(0, 70));
+                                                    }
+                                                    catch (e) { /* ignore */ }
+                                                    hidEl_1 = null;
+                                                    try {
+                                                        hidEl_1 = qel && qel.querySelector ? qel.querySelector("input[type=hidden][id^=answer]") : null;
+                                                        if (!hidEl_1 && qdoc) {
+                                                            hidEl_1 = qdoc.querySelector("input[type=hidden][id^=answer]");
+                                                        }
+                                                    }
+                                                    catch (e) { /* ignore */ }
+                                                    hidBefore_1 = hidEl_1 ? String(hidEl_1.value || "") : "";
+                                                    pick = function (li) {
+                                                        if (String(li.getAttribute ? li.getAttribute("aria-checked") : "") == "true") {
+                                                            return true;
+                                                        }
+                                                        // 1) 直接调页面函数（单选/判断有效；多选可能 Illegal invocation）
+                                                        try {
+                                                            if (typeof qwin_1.addChoice == "function") {
+                                                                qwin_1.addChoice(li);
+                                                            }
+                                                        }
+                                                        catch (e) { /* ignore */ }
+                                                        if (String(li.getAttribute ? li.getAttribute("aria-checked") : "") == "true") {
+                                                            return true;
+                                                        }
+                                                        // 2) 直接触发内联 onclick（addChoice(this)）
+                                                        try {
+                                                            if (typeof li.onclick == "function") {
+                                                                li.onclick.call(li, { target: li, currentTarget: li });
+                                                            }
+                                                        }
+                                                        catch (e) { /* ignore */ }
+                                                        if (String(li.getAttribute ? li.getAttribute("aria-checked") : "") == "true") {
+                                                            return true;
+                                                        }
+                                                        // 3) 合成点击
+                                                        try {
+                                                            li.click();
+                                                        }
+                                                        catch (e) { /* ignore */ }
+                                                        if (String(li.getAttribute ? li.getAttribute("aria-checked") : "") == "true") {
+                                                            return true;
+                                                        }
+                                                        // 4) 可信真实点击（异步，先发出去）
+                                                        try {
+                                                            var ck = window.cxClickEl;
+                                                            if (typeof ck == "function") {
+                                                                var pr = ck(li);
+                                                                if (pr && pr.catch) {
+                                                                    pr.catch(function () { });
+                                                                }
+                                                            }
+                                                        }
+                                                        catch (e) { /* ignore */ }
+                                                        return false;
+                                                    };
                                                     for (wi = 0; wi < wantIdx.length; wi++) {
                                                         idx2 = wantIdx[wi];
                                                         if (idx2 < 0 || idx2 >= opts_1.length) {
                                                             continue;
                                                         }
                                                         li = opts_1[idx2];
-                                                        done = false;
-                                                        // 多选题：addChoice 对 checkbox 常抛 Illegal invocation，优先用可信真实点击
-                                                        if (type_1 == 2) {
-                                                            try {
-                                                                ck = window.cxClickEl;
-                                                                if (typeof ck == "function") {
-                                                                    pr = ck(li);
-                                                                    if (pr && pr.catch) {
-                                                                        pr.catch(function () { });
-                                                                    }
-                                                                    done = true;
-                                                                }
-                                                            }
-                                                            catch (e) { /* ignore */ }
-                                                        }
-                                                        if (!done) {
-                                                            try {
-                                                                if (typeof qwin.addChoice == "function") {
-                                                                    qwin.addChoice(li);
-                                                                }
-                                                                else {
-                                                                    li.click();
-                                                                }
-                                                                done = true;
-                                                            }
-                                                            catch (de) {
-                                                                application_1.Application.App.log.Warn("直填失败：" + String((de && de.message) || de));
-                                                                try {
-                                                                    li.click();
-                                                                }
-                                                                catch (e2) { /* ignore */ }
-                                                            }
-                                                        }
-                                                        application_1.Application.App.log.Info("直填 " + String.fromCharCode(65 + idx2) + " → aria=" + String(li.getAttribute ? li.getAttribute("aria-checked") : "?"));
+                                                        ok = pick(li);
+                                                        application_1.Application.App.log.Info("直填 " + String.fromCharCode(65 + idx2) + " → " + (ok ? "已选中" : "待异步确认") + " aria=" + String(li.getAttribute ? li.getAttribute("aria-checked") : "?"));
                                                     }
                                                     savedWant_1 = wantIdx.slice();
                                                     savedOpts_1 = opts_1;
-                                                    savedQwin = qwin;
                                                     check = function () {
                                                         var okCnt = 0;
                                                         for (var wi = 0; wi < savedWant_1.length; wi++) {
@@ -2136,12 +2162,11 @@ var ToolsQuestionBankFacade = /** @class */ (function () {
                                                             }
                                                             var li = savedOpts_1[idx2];
                                                             var aria = li.getAttribute ? String(li.getAttribute("aria-checked")) : "";
-                                                            var cls = String(li.className || "");
-                                                            if (aria == "true" || cls.indexOf("after") >= 0 || cls.indexOf("checked") >= 0) {
+                                                            if (aria == "true") {
                                                                 okCnt++;
                                                             }
                                                             else if (type_1 == 2) {
-                                                                // 多选：补充一次可信真实点击（addChoice 对 checkbox 可能只改 aria 不改勾选）
+                                                                // 多选补点：可信真实点击
                                                                 try {
                                                                     var ck = window.cxClickEl;
                                                                     if (typeof ck == "function") {
@@ -2156,19 +2181,17 @@ var ToolsQuestionBankFacade = /** @class */ (function () {
                                                         }
                                                         var hidVal = "";
                                                         try {
-                                                            var hid = qel_1 && qel_1.querySelector ? qel_1.querySelector("input[type=hidden][id^=answer]") : null;
-                                                            if (!hid) {
-                                                                hid = qdoc_1.querySelector("input[type=hidden][id^=answer]");
-                                                            }
-                                                            if (hid) {
-                                                                hidVal = String(hid.value || "");
+                                                            if (hidEl_1) {
+                                                                hidVal = String(hidEl_1.value || "");
                                                             }
                                                         }
                                                         catch (e) { /* ignore */ }
-                                                        application_1.Application.App.log.Info("直填校验：" + okCnt + "/" + savedWant_1.length + " 选中" + (hidVal ? "，隐藏答案=" + hidVal : "") + "（题型 " + type_1 + "）");
+                                                        application_1.Application.App.log.Info("直填校验：" + okCnt + "/" + savedWant_1.length + " 选中，隐藏答案=" + JSON.stringify(hidVal) + "（题型 " + type_1 + "）");
+                                                        if (savedWant_1.length > 0 && !hidVal && hidBefore_1) {
+                                                            application_1.Application.App.log.Warn("多选隐藏答案被清空（之前是 " + JSON.stringify(hidBefore_1) + "）");
+                                                        }
                                                     };
-                                                    setTimeout(check, type_1 == 2 ? 500 : 60);
-                                                    // 已执行点击，先按成功处理；补点由上面的校验异步完成
+                                                    setTimeout(check, type_1 == 2 ? 700 : 60);
                                                     directOk = true;
                                                 }
                                             }
