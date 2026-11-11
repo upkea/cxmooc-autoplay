@@ -5,6 +5,7 @@ import { CssBtn } from "./utils";
 import { CxTaskControlBar, CxTask } from "@App/mooc/chaoxing/task";
 import { Mooc } from "@App/internal/app/mooc";
 import { TaskType } from "@App/internal/app/task";
+import { AIEnabled, ReasonFromText } from "@App/internal/app/ai";
 
 // 优化播放器
 export class CxVideoOptimization implements Mooc {
@@ -21,6 +22,126 @@ export class CxVideoOptimization implements Mooc {
             this.hook();
         });
         this.Api();
+        this.videoQuiz();
+    }
+
+    // ===== 视频弹题（播放中途弹出的题）=====
+    // DOM：.ans-videoquiz > .tkTopic > .tkTopic_title(题型) / .tkItem_title(题干)
+    //      ul.tkItem_ul > li.ans-videoquiz-opt（真实 radio input）
+    //      提交按钮 a#videoquiz-submit；答完出现 a#videoquiz-continue（继续学习）
+    protected videoQuiz() {
+        let answered: { [k: string]: boolean } = {};
+        let busy = false;
+        let tick = () => {
+            try {
+                if (busy || !AIEnabled()) {
+                    return;
+                }
+                let box = <HTMLElement>document.querySelector(".ans-videoquiz");
+                if (!box) {
+                    return;
+                }
+                let r = box.getBoundingClientRect();
+                if (!r || r.width < 80 || r.height < 40) {
+                    return;
+                }
+                let id = box.id || "";
+                if (id && answered[id]) {
+                    return;
+                }
+                let submit = <HTMLElement>box.querySelector("#videoquiz-submit");
+                if (!submit || (submit.style && submit.style.display == "none")) {
+                    return;
+                }
+                busy = true;
+                this.answerVideoQuiz(box).then(() => {
+                    if (id) {
+                        answered[id] = true;
+                    }
+                    busy = false;
+                }).catch(() => {
+                    busy = false;
+                });
+            } catch (e) {
+                busy = false;
+            }
+        };
+        setInterval(tick, 2000);
+    }
+
+    protected async answerVideoQuiz(box: HTMLElement): Promise<void> {
+        let titleEl = box.querySelector(".tkTopic_title");
+        let typeName = titleEl ? String(titleEl.textContent || "").trim() : "";
+        let stemEl = box.querySelector(".tkItem_title");
+        let stem = stemEl ? String(stemEl.textContent || "").trim() : "";
+        let lis = box.querySelectorAll("li.ans-videoquiz-opt");
+        if (!stem || lis.length == 0) {
+            return;
+        }
+        let letters: string[] = [];
+        let opts: HTMLElement[] = [];
+        let optLines: string[] = [];
+        for (let i = 0; i < lis.length; i++) {
+            let t = String(lis[i].textContent || "").replace(/\s+/g, " ").trim();
+            let m = t.match(/^([A-H])[、.．:：\s]*(.*)$/);
+            let letter = m ? m[1] : String.fromCharCode(65 + i);
+            letters.push(letter);
+            opts.push(<HTMLElement>lis[i]);
+            optLines.push(letter + "、" + (m ? m[2] : t));
+        }
+        let name2 = /判断/.test(typeName) ? "判断题" : (/多选/.test(typeName) ? "多选题" : "单选题");
+        let qtext = name2 + "\n" + stem + "\n" + optLines.join("\n");
+        let rr = await ReasonFromText(qtext, name2, letters, 2);
+        if (!rr.ok || rr.letters.length == 0) {
+            Application.App.log.Warn("视频弹题：AI 没给出答案（" + (rr.error || "空") + "），跳过");
+            return;
+        }
+        Application.App.log.Info("视频弹题：" + name2 + " → " + rr.letters.join("") + "（" + (rr.raw || "") + "）");
+        // 勾选
+        for (let k = 0; k < rr.letters.length; k++) {
+            let idx = letters.indexOf(rr.letters[k]);
+            if (idx < 0) {
+                continue;
+            }
+            let li = opts[idx];
+            let input = <HTMLInputElement>li.querySelector("input");
+            let ok = false;
+            if (input) {
+                try {
+                    if (!input.checked) {
+                        input.click();
+                    }
+                    ok = input.checked;
+                } catch (e) { /* ignore */ }
+            }
+            if (!ok) {
+                // 可信真实点击兜底
+                try {
+                    let ck = (<any>window).cxClickEl;
+                    if (typeof ck == "function") {
+                        ck(li);
+                    }
+                } catch (e) { /* ignore */ }
+            }
+        }
+        // 提交
+        let submit = <HTMLElement>box.querySelector("#videoquiz-submit");
+        if (submit) {
+            try {
+                submit.click();
+                Application.App.log.Info("视频弹题：已点提交");
+            } catch (e) { /* ignore */ }
+        }
+        // 稍后点「继续学习」恢复视频
+        setTimeout(() => {
+            try {
+                let cont = <HTMLElement>document.querySelector("#videoquiz-continue");
+                if (cont && cont.getBoundingClientRect().width > 0) {
+                    cont.click();
+                    Application.App.log.Info("视频弹题：已点继续学习");
+                }
+            } catch (e) { /* ignore */ }
+        }, 1500);
     }
 
     protected hook() {

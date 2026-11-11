@@ -7991,6 +7991,42 @@ var __extends = (this && this.__extends) || (function () {
         d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
     };
 })();
+var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+};
+var __generator = (this && this.__generator) || function (thisArg, body) {
+    var _ = { label: 0, sent: function() { if (t[0] & 1) throw t[1]; return t[1]; }, trys: [], ops: [] }, f, y, t, g;
+    return g = { next: verb(0), "throw": verb(1), "return": verb(2) }, typeof Symbol === "function" && (g[Symbol.iterator] = function() { return this; }), g;
+    function verb(n) { return function (v) { return step([n, v]); }; }
+    function step(op) {
+        if (f) throw new TypeError("Generator is already executing.");
+        while (_) try {
+            if (f = 1, y && (t = op[0] & 2 ? y["return"] : op[0] ? y["throw"] || ((t = y["return"]) && t.call(y), 0) : y.next) && !(t = t.call(y, op[1])).done) return t;
+            if (y = 0, t) op = [op[0] & 2, t.value];
+            switch (op[0]) {
+                case 0: case 1: t = op; break;
+                case 4: _.label++; return { value: op[1], done: false };
+                case 5: _.label++; y = op[1]; op = [0]; continue;
+                case 7: op = _.ops.pop(); _.trys.pop(); continue;
+                default:
+                    if (!(t = _.trys, t = t.length > 0 && t[t.length - 1]) && (op[0] === 6 || op[0] === 2)) { _ = 0; continue; }
+                    if (op[0] === 3 && (!t || (op[1] > t[0] && op[1] < t[3]))) { _.label = op[1]; break; }
+                    if (op[0] === 6 && _.label < t[1]) { _.label = t[1]; t = op; break; }
+                    if (t && _.label < t[2]) { _.label = t[2]; _.ops.push(op); break; }
+                    if (t[2]) _.ops.pop();
+                    _.trys.pop(); continue;
+            }
+            op = body.call(thisArg, _);
+        } catch (e) { op = [6, e]; y = 0; } finally { f = t = 0; }
+        if (op[0] & 5) throw op[1]; return { value: op[0] ? op[1] : void 0, done: true };
+    }
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.Video = exports.CxVideoControlBar = exports.CxVideoOptimization = void 0;
 var hook_1 = __webpack_require__(/*! @App/internal/utils/hook */ "./src/internal/utils/hook.ts");
@@ -7998,6 +8034,7 @@ var application_1 = __webpack_require__(/*! @App/internal/application */ "./src/
 var utils_1 = __webpack_require__(/*! @App/internal/utils/utils */ "./src/internal/utils/utils.ts");
 var utils_2 = __webpack_require__(/*! ./utils */ "./src/mooc/chaoxing/utils.ts");
 var task_1 = __webpack_require__(/*! @App/mooc/chaoxing/task */ "./src/mooc/chaoxing/task.ts");
+var ai_1 = __webpack_require__(/*! @App/internal/app/ai */ "./src/internal/app/ai.ts");
 // 优化播放器
 var CxVideoOptimization = /** @class */ (function () {
     function CxVideoOptimization() {
@@ -8013,6 +8050,140 @@ var CxVideoOptimization = /** @class */ (function () {
             _this.hook();
         });
         this.Api();
+        this.videoQuiz();
+    };
+    // ===== 视频弹题（播放中途弹出的题）=====
+    // DOM：.ans-videoquiz > .tkTopic > .tkTopic_title(题型) / .tkItem_title(题干)
+    //      ul.tkItem_ul > li.ans-videoquiz-opt（真实 radio input）
+    //      提交按钮 a#videoquiz-submit；答完出现 a#videoquiz-continue（继续学习）
+    CxVideoOptimization.prototype.videoQuiz = function () {
+        var _this = this;
+        var answered = {};
+        var busy = false;
+        var tick = function () {
+            try {
+                if (busy || !ai_1.AIEnabled()) {
+                    return;
+                }
+                var box = document.querySelector(".ans-videoquiz");
+                if (!box) {
+                    return;
+                }
+                var r = box.getBoundingClientRect();
+                if (!r || r.width < 80 || r.height < 40) {
+                    return;
+                }
+                var id_1 = box.id || "";
+                if (id_1 && answered[id_1]) {
+                    return;
+                }
+                var submit = box.querySelector("#videoquiz-submit");
+                if (!submit || (submit.style && submit.style.display == "none")) {
+                    return;
+                }
+                busy = true;
+                _this.answerVideoQuiz(box).then(function () {
+                    if (id_1) {
+                        answered[id_1] = true;
+                    }
+                    busy = false;
+                }).catch(function () {
+                    busy = false;
+                });
+            }
+            catch (e) {
+                busy = false;
+            }
+        };
+        setInterval(tick, 2000);
+    };
+    CxVideoOptimization.prototype.answerVideoQuiz = function (box) {
+        return __awaiter(this, void 0, Promise, function () {
+            var titleEl, typeName, stemEl, stem, lis, letters, opts, optLines, i, t, m, letter, name2, qtext, rr, k, idx, li, input, ok, ck, submit;
+            return __generator(this, function (_a) {
+                switch (_a.label) {
+                    case 0:
+                        titleEl = box.querySelector(".tkTopic_title");
+                        typeName = titleEl ? String(titleEl.textContent || "").trim() : "";
+                        stemEl = box.querySelector(".tkItem_title");
+                        stem = stemEl ? String(stemEl.textContent || "").trim() : "";
+                        lis = box.querySelectorAll("li.ans-videoquiz-opt");
+                        if (!stem || lis.length == 0) {
+                            return [2 /*return*/];
+                        }
+                        letters = [];
+                        opts = [];
+                        optLines = [];
+                        for (i = 0; i < lis.length; i++) {
+                            t = String(lis[i].textContent || "").replace(/\s+/g, " ").trim();
+                            m = t.match(/^([A-H])[、.．:：\s]*(.*)$/);
+                            letter = m ? m[1] : String.fromCharCode(65 + i);
+                            letters.push(letter);
+                            opts.push(lis[i]);
+                            optLines.push(letter + "、" + (m ? m[2] : t));
+                        }
+                        name2 = /判断/.test(typeName) ? "判断题" : (/多选/.test(typeName) ? "多选题" : "单选题");
+                        qtext = name2 + "\n" + stem + "\n" + optLines.join("\n");
+                        return [4 /*yield*/, ai_1.ReasonFromText(qtext, name2, letters, 2)];
+                    case 1:
+                        rr = _a.sent();
+                        if (!rr.ok || rr.letters.length == 0) {
+                            application_1.Application.App.log.Warn("视频弹题：AI 没给出答案（" + (rr.error || "空") + "），跳过");
+                            return [2 /*return*/];
+                        }
+                        application_1.Application.App.log.Info("视频弹题：" + name2 + " → " + rr.letters.join("") + "（" + (rr.raw || "") + "）");
+                        // 勾选
+                        for (k = 0; k < rr.letters.length; k++) {
+                            idx = letters.indexOf(rr.letters[k]);
+                            if (idx < 0) {
+                                continue;
+                            }
+                            li = opts[idx];
+                            input = li.querySelector("input");
+                            ok = false;
+                            if (input) {
+                                try {
+                                    if (!input.checked) {
+                                        input.click();
+                                    }
+                                    ok = input.checked;
+                                }
+                                catch (e) { /* ignore */ }
+                            }
+                            if (!ok) {
+                                // 可信真实点击兜底
+                                try {
+                                    ck = window.cxClickEl;
+                                    if (typeof ck == "function") {
+                                        ck(li);
+                                    }
+                                }
+                                catch (e) { /* ignore */ }
+                            }
+                        }
+                        submit = box.querySelector("#videoquiz-submit");
+                        if (submit) {
+                            try {
+                                submit.click();
+                                application_1.Application.App.log.Info("视频弹题：已点提交");
+                            }
+                            catch (e) { /* ignore */ }
+                        }
+                        // 稍后点「继续学习」恢复视频
+                        setTimeout(function () {
+                            try {
+                                var cont = document.querySelector("#videoquiz-continue");
+                                if (cont && cont.getBoundingClientRect().width > 0) {
+                                    cont.click();
+                                    application_1.Application.App.log.Info("视频弹题：已点继续学习");
+                                }
+                            }
+                            catch (e) { /* ignore */ }
+                        }, 1500);
+                        return [2 /*return*/];
+                }
+            });
+        });
     };
     CxVideoOptimization.prototype.hook = function () {
         if (document.readyState != "interactive") {
