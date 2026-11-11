@@ -5,7 +5,7 @@ import { CssBtn } from "./utils";
 import { CxTaskControlBar, CxTask } from "@App/mooc/chaoxing/task";
 import { Mooc } from "@App/internal/app/mooc";
 import { TaskType } from "@App/internal/app/task";
-import { AIEnabled, ReasonFromText } from "@App/internal/app/ai";
+import { AIEnabled, AIConfig, ReasonFromText } from "@App/internal/app/ai";
 
 // 优化播放器
 export class CxVideoOptimization implements Mooc {
@@ -14,6 +14,9 @@ export class CxVideoOptimization implements Mooc {
 
     public Init(): void {
         //对播放器进行优化
+        try {
+            Application.App.log.Info("[CXVIDEO] 视频页面初始化");
+        } catch (e) { /* ignore */ }
         window.addEventListener("load", () => {
             Application.App.config.super_mode && isPhone() && ((<any>Application.GlobalContext).Ext.isChaoxing = true);
         });
@@ -32,9 +35,13 @@ export class CxVideoOptimization implements Mooc {
     protected videoQuiz() {
         let answered: { [k: string]: boolean } = {};
         let busy = false;
+        let aiWarned = false;
+        try {
+            Application.App.log.Info("[CXVIDEO] 弹题监控启动，AI=" + (AIEnabled() ? "开" : "关") + "，AIKey=" + (AIConfig().key ? "有" : "无"));
+        } catch (e) { /* ignore */ }
         let tick = () => {
             try {
-                if (busy || !AIEnabled()) {
+                if (busy) {
                     return;
                 }
                 let box = <HTMLElement>document.querySelector(".ans-videoquiz");
@@ -42,7 +49,14 @@ export class CxVideoOptimization implements Mooc {
                     return;
                 }
                 let r = box.getBoundingClientRect();
-                if (!r || r.width < 80 || r.height < 40) {
+                if (!r || r.width < 80 || r.height < 30) {
+                    return;
+                }
+                if (!AIEnabled()) {
+                    if (!aiWarned) {
+                        aiWarned = true;
+                        Application.App.log.Warn("[CXVIDEO] 检测到弹题，但 AI 未启用/未配置 Key，跳过");
+                    }
                     return;
                 }
                 let id = box.id || "";
@@ -53,6 +67,7 @@ export class CxVideoOptimization implements Mooc {
                 if (!submit || (submit.style && submit.style.display == "none")) {
                     return;
                 }
+                Application.App.log.Info("[CXVIDEO] 检测到弹题 " + id);
                 busy = true;
                 this.answerVideoQuiz(box).then(() => {
                     if (id) {

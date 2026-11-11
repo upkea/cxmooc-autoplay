@@ -8042,6 +8042,10 @@ var CxVideoOptimization = /** @class */ (function () {
     CxVideoOptimization.prototype.Init = function () {
         var _this = this;
         //对播放器进行优化
+        try {
+            application_1.Application.App.log.Info("[CXVIDEO] 视频页面初始化");
+        }
+        catch (e) { /* ignore */ }
         window.addEventListener("load", function () {
             application_1.Application.App.config.super_mode && utils_1.isPhone() && (application_1.Application.GlobalContext.Ext.isChaoxing = true);
         });
@@ -8060,9 +8064,14 @@ var CxVideoOptimization = /** @class */ (function () {
         var _this = this;
         var answered = {};
         var busy = false;
+        var aiWarned = false;
+        try {
+            application_1.Application.App.log.Info("[CXVIDEO] 弹题监控启动，AI=" + (ai_1.AIEnabled() ? "开" : "关") + "，AIKey=" + (ai_1.AIConfig().key ? "有" : "无"));
+        }
+        catch (e) { /* ignore */ }
         var tick = function () {
             try {
-                if (busy || !ai_1.AIEnabled()) {
+                if (busy) {
                     return;
                 }
                 var box = document.querySelector(".ans-videoquiz");
@@ -8070,7 +8079,14 @@ var CxVideoOptimization = /** @class */ (function () {
                     return;
                 }
                 var r = box.getBoundingClientRect();
-                if (!r || r.width < 80 || r.height < 40) {
+                if (!r || r.width < 80 || r.height < 30) {
+                    return;
+                }
+                if (!ai_1.AIEnabled()) {
+                    if (!aiWarned) {
+                        aiWarned = true;
+                        application_1.Application.App.log.Warn("[CXVIDEO] 检测到弹题，但 AI 未启用/未配置 Key，跳过");
+                    }
                     return;
                 }
                 var id_1 = box.id || "";
@@ -8081,6 +8097,7 @@ var CxVideoOptimization = /** @class */ (function () {
                 if (!submit || (submit.style && submit.style.display == "none")) {
                     return;
                 }
+                application_1.Application.App.log.Info("[CXVIDEO] 检测到弹题 " + id_1);
                 busy = true;
                 _this.answerVideoQuiz(box).then(function () {
                     if (id_1) {
