@@ -53,44 +53,54 @@ export class CxCourse extends EventListener<MoocEvent> implements MoocTaskSet {
 
     // 操作任务卡,一个页面会包含很多任务,取出来
     public async OperateCard(iframe: HTMLIFrameElement) {
-        let iframeWindow: any = iframe.contentWindow;
-        // 判断任务的参数
-        if (iframeWindow.mArg == undefined) {
-            let match = iframeWindow.document.body.innerHTML.match(/try{\s+?mArg = (.*?);/);
-            if (!match) {
+        try {
+            let iframeWindow: any = iframe.contentWindow;
+            if (!iframeWindow) {
                 return;
             }
-            iframeWindow.mArg = JSON.parse(match[1]);
-        }
-        // 任务的属性
-        this.attachments = <Array<any>>iframeWindow.mArg.attachments;
-        this.taskList = new Array();
-        // 每加载一批新任务点，先清空通知条里上一批任务的按钮组，否则会越堆越多
-        let btnBar = <HTMLElement>document.getElementById("tools-btn-bar");
-        if (btnBar) {
-            while (btnBar.firstChild) {
-                btnBar.removeChild(btnBar.firstChild);
+            // 判断任务的参数（跨域 iframe 访问会抛 SecurityError，直接跳过）
+            if (iframeWindow.mArg == undefined) {
+                let match = iframeWindow.document.body.innerHTML.match(/try{\s+?mArg = (.*?);/);
+                if (!match) {
+                    return;
+                }
+                iframeWindow.mArg = JSON.parse(match[1]);
             }
-        }
-        // 构建任务
-        for (let index = 0; index < this.attachments.length; index++) {
-            let value = this.attachments[index];
-            value.defaults = <Array<any>>iframeWindow.mArg.defaults;
-            let task: CxTask;
-            // 任务工厂去创建对应的任务对象
-            task = TaskFactory.CreateCourseTask(iframeWindow, value);
-            if (!task) {
-                continue;
+            // 任务的属性
+            this.attachments = <Array<any>>iframeWindow.mArg.attachments;
+            this.taskList = new Array();
+            // 每加载一批新任务点，先清空通知条里上一批任务的按钮组，否则会越堆越多
+            let btnBar = <HTMLElement>document.getElementById("tools-btn-bar");
+            if (btnBar) {
+                while (btnBar.firstChild) {
+                    btnBar.removeChild(btnBar.firstChild);
+                }
             }
-            task.jobIndex = index;
-            this.taskList.push(task);
-            task.addEventListener("complete", () => {
-                this.callEvent("taskComplete", index, task);
-            });
-            await task.Init();
+            // 构建任务
+            for (let index = 0; index < this.attachments.length; index++) {
+                let value = this.attachments[index];
+                value.defaults = <Array<any>>iframeWindow.mArg.defaults;
+                let task: CxTask;
+                // 任务工厂去创建对应的任务对象
+                task = TaskFactory.CreateCourseTask(iframeWindow, value);
+                if (!task) {
+                    continue;
+                }
+                task.jobIndex = index;
+                this.taskList.push(task);
+                task.addEventListener("complete", () => {
+                    this.callEvent("taskComplete", index, task);
+                });
+                await task.Init();
+            }
+            this.taskIndex = 0;
+            this.callEvent("reload");
+        } catch (e) {
+            // 跨域 iframe / 页面结构异常：跳过这个 iframe，别把整个流程打断
+            try {
+                Application.App.log.Warn("读取任务卡失败（已跳过）：" + ((e && e.message) || e));
+            } catch (e2) { /* ignore */ }
         }
-        this.taskIndex = 0;
-        this.callEvent("reload");
     }
 
     protected afterPage(): HTMLElement {

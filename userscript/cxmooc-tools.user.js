@@ -4701,13 +4701,17 @@ var CxCourse = /** @class */ (function (_super) {
     // 操作任务卡,一个页面会包含很多任务,取出来
     CxCourse.prototype.OperateCard = function (iframe) {
         return __awaiter(this, void 0, void 0, function () {
-            var iframeWindow, match, btnBar, _loop_1, this_1, index;
+            var iframeWindow, match, btnBar, _loop_1, this_1, index, e_1;
             var _this = this;
             return __generator(this, function (_a) {
                 switch (_a.label) {
                     case 0:
+                        _a.trys.push([0, 5, , 6]);
                         iframeWindow = iframe.contentWindow;
-                        // 判断任务的参数
+                        if (!iframeWindow) {
+                            return [2 /*return*/];
+                        }
+                        // 判断任务的参数（跨域 iframe 访问会抛 SecurityError，直接跳过）
                         if (iframeWindow.mArg == undefined) {
                             match = iframeWindow.document.body.innerHTML.match(/try{\s+?mArg = (.*?);/);
                             if (!match) {
@@ -4763,7 +4767,16 @@ var CxCourse = /** @class */ (function (_super) {
                     case 4:
                         this.taskIndex = 0;
                         this.callEvent("reload");
-                        return [2 /*return*/];
+                        return [3 /*break*/, 6];
+                    case 5:
+                        e_1 = _a.sent();
+                        // 跨域 iframe / 页面结构异常：跳过这个 iframe，别把整个流程打断
+                        try {
+                            application_1.Application.App.log.Warn("读取任务卡失败（已跳过）：" + ((e_1 && e_1.message) || e_1));
+                        }
+                        catch (e2) { /* ignore */ }
+                        return [3 /*break*/, 6];
+                    case 6: return [2 /*return*/];
                 }
             });
         });
